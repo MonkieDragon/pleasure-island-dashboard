@@ -1,6 +1,6 @@
 const config = {
   plugins: {
-    "@tailwindcss/postcss": {},
+    // Tailwind removed; keep PostCSS pipeline minimal.
   },
 };
 

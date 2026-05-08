@@ -1,21 +1,35 @@
-export type Puzzle = {
-  id: string;
-  title: string | null;
-  latitude: number;
-  longitude: number;
-  chain_id: string | null;
-  order_index: number | null;
-};
+import type { Database } from "@/supabase/types";
 
-export type PuzzleChain = {
-  id: string;
-  name: string | null;
-};
+export type UUID = string;
 
-export type Treasure = {
-  id: string;
-  latitude: number;
-  longitude: number;
-  status: string;
-  last_found_at: string | null;
+type PublicTables = Database["public"]["Tables"];
+
+export type Region = PublicTables["regions"]["Row"];
+export type PuzzleChain = PublicTables["puzzle_chains"]["Row"];
+export type Treasure = PublicTables["treasures"]["Row"];
+
+export type PuzzleStepRow = PublicTables["puzzle_steps"]["Row"];
+
+export type PuzzleStepType =
+  | "info"
+  | "text"
+  | "qr"
+  | "number"
+  | "multiple_choice";
+
+export function isPuzzleStepType(value: string): value is PuzzleStepType {
+  return (
+    value === "info" ||
+    value === "text" ||
+    value === "qr" ||
+    value === "number" ||
+    value === "multiple_choice"
+  );
+}
+
+// DB-derived row type (matches Supabase exactly; `type` is `string` in DB).
+export type PuzzleStep = PuzzleStepRow;
+
+export type ChainWithSteps = PuzzleChain & {
+  steps: PuzzleStep[];
 };

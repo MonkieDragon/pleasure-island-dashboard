@@ -6,10 +6,24 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:pull": "supabase db pull",
+    "db:types": "powershell -NoProfile -Command \"npx supabase gen types typescript --linked | Out-File -FilePath supabase/types.ts -Encoding utf8\"",
+    "db:sync": "npm run db:pull && npm run db:types"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@emotion/cache": "^11.14.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/server": "^11.11.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.0.0",
+    "@mui/material": "^9.0.0",
+    "@mui/material-nextjs": "^9.0.0",
     "@supabase/supabase-js": "^2.105.1",
+    "dotenv": "^17.4.2",
     "leaflet": "^1.9.4",
     "next": "16.2.4",
     "react": "19.2.4",
@@ -17,14 +31,13 @@
     "react-leaflet": "^5.0.0"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
-    "tailwindcss": "^4",
+    "supabase": "^2.98.1",
     "typescript": "^5"
   }
 }

@@ -1,0 +1,135 @@
+You are working inside a strict architecture system for a Puzzle Dashboard app.
+
+You MUST follow AGENTS.md exactly. If there is any conflict, AGENTS.md overrides everything.
+
+---
+
+# 🚨 CORE RULE
+
+Do NOT invent or modify architecture.
+
+Do NOT introduce new abstractions.
+
+Do NOT rename core domain entities:
+
+- region
+- chain
+- step
+- treasure (optional system only)
+
+---
+
+# 🧭 DOMAIN RULES
+
+- chain = real-world map location
+- step = ordered gameplay clue inside a chain
+- region = geographic grouping of chains
+- treasure = optional reward system (not core gameplay)
+
+Never merge or reinterpret these concepts.
+
+---
+
+# 🧠 ARCHITECTURE RULE
+
+The ONLY component allowed to:
+
+- fetch data from Supabase
+- hold global state
+- coordinate updates
+
+is:
+
+👉 Dashboard
+
+All other components must be "dumb" and receive props only.
+
+---
+
+# 🔄 DATA FLOW (STRICT)
+
+Supabase → Dashboard → Props → Components
+
+NO EXCEPTIONS.
+
+---
+
+# 🚫 FORBIDDEN ACTIONS
+
+You must NEVER:
+
+- fetch Supabase data inside components other than Dashboard
+- create duplicate state (e.g. puzzles vs steps vs chains confusion)
+- mix domain concepts (chain/step/region)
+- introduce “puzzle” as a replacement abstraction
+- redesign architecture without explicit request
+- move logic out of Dashboard into UI components
+
+---
+
+# 🗺 MAP RULES
+
+MapView is ONLY responsible for rendering:
+
+- chains as markers
+- optional step markers (only if lat/lng exist)
+- polyline trails (derived from ordered steps)
+
+MapView must NOT:
+
+- fetch data
+- filter chains or steps
+- modify Supabase directly (except via callbacks from Dashboard)
+
+---
+
+# 🧩 COMPONENT RULES
+
+Sidebar:
+
+- chains only
+
+StepEditor:
+
+- steps only
+
+MapView:
+
+- visual rendering only
+
+Dashboard:
+
+- orchestration only
+
+---
+
+# 🧠 DECISION RULE
+
+If unsure where logic belongs:
+
+1. Put it in Dashboard
+2. Never create a new abstraction
+3. Never distribute state downward or sideways
+
+---
+
+# ⚠️ REFRACTOR RULE
+
+If a change requires multiple components to be rewritten:
+STOP and ask for clarification instead of proceeding.
+
+Do not perform “creative refactors”.
+
+---
+
+# 🧱 STABILITY RULE
+
+Prefer consistency over improvement.
+
+If something works, do NOT restructure it.
+
+Only modify code when explicitly required by the request.
+
+---
+
+# END RULESET

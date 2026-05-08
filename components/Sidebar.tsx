@@ -1,71 +1,1052 @@
-"use client";
-
-import { Puzzle, PuzzleChain } from "@/types/database";
+import { formatSupabaseError } from "@/lib/supabaseError";
+import {
+  PuzzleChain,
+  PuzzleStep,
+  Region,
+  Treasure,
+} from "@/types/database";
+import type { MapHover } from "@/types/mapUi";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import LockIcon from "@mui/icons-material/Lock";
+import {
+  Box,
+  Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemText,
+  Paper,
+  TextField,
+  Typography,
+} from "@mui/material";
+import {
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useEffect, useMemo, useState } from "react";
 
 type Props = {
-  puzzles: Puzzle[];
+  countryName: string;
+  regions: Region[];
   chains: PuzzleChain[];
-  selectedId: string | null;
-  onSelectPuzzle: (p: Puzzle) => void;
-  onSelectChain: (chainId: string | null) => void;
+  steps: PuzzleStep[];
+  treasures: Treasure[];
+  selectedRegionId: string | null;
+  selectedChainId: string | null;
+  selectedStepId: string | null;
+  selectedTreasureId: string | null;
+  placementStepId: string | null;
+  onStartStepPlacement: (stepId: string) => void;
+  onHoverChange: (next: MapHover | null) => void;
+  onBack: () => void;
+  onSelectRegion: (id: string) => void;
+  onSelectChain: (id: string) => void;
+  onSelectStep: (id: string) => void;
+  onSelectTreasure: (id: string) => void;
+  onReorderSteps: (orderedStepIds: string[]) => void;
+  onStepsOrderDraftChange: (draft: {
+    chainId: string;
+    orderedStepIds: string[];
+    isDirty: boolean;
+  }) => void;
+  onCreateRegion: (input: { name: string; slug?: string }) => Promise<void>;
+  onCreateChain: (input: {
+    title: string;
+    regionId: string;
+    latitude: number;
+    longitude: number;
+  }) => Promise<void>;
+  onCreateStep: (input: { chainId: string }) => Promise<void>;
+  onZoomToRegion: () => void;
+  onZoomToChain: () => void;
+
+  newChainDraft: { title: string; lat: string; lng: string };
+  onNewChainDraftChange: (next: { title: string; lat: string; lng: string }) => void;
+  onStartNewChainPlacement: () => void;
+  onCancelNewChainPlacement: () => void;
+  newChainPlacementActive: boolean;
+
+  newTreasureDraft: { lat: string; lng: string };
+  onNewTreasureDraftChange: (next: { lat: string; lng: string }) => void;
+  onStartNewTreasurePlacement: () => void;
+  onCancelNewTreasurePlacement: () => void;
+  newTreasurePlacementActive: boolean;
+  onCreateTreasure: (input: {
+    regionId: string;
+    latitude: number;
+    longitude: number;
+  }) => Promise<void>;
+
+  onSetChainImage: (input: { chainId: string; file: File }) => Promise<void> | void;
+  onRemoveChainImage: (input: { chainId: string }) => Promise<void> | void;
+  getImageUrl: (path: string) => string;
 };
 
-export default function Sidebar({
-  puzzles,
-  chains,
-  selectedId,
-  onSelectPuzzle,
-  onSelectChain,
-}: Props) {
-  return (
-    <div
-      style={{
-        width: 250,
-        borderRight: "1px solid #ccc",
-        overflowY: "auto",
-        padding: 8,
-      }}
-    >
-      <h3>Chains</h3>
+function SortableStepRow({
+  id,
+  stepNumber,
+  stepType,
+  stepContent,
+  hasCoords,
+  locked,
+  placing,
+  selected,
+  onSelect,
+  onHoverIn,
+  onHoverOut,
+  onStartPlacement,
+}: {
+  id: string;
+  stepNumber: number;
+  stepType: string;
+  stepContent: string | null;
+  hasCoords: boolean;
+  locked: boolean;
+  placing: boolean;
+  selected: boolean;
+  onSelect: () => void;
+  onHoverIn: () => void;
+  onHoverOut: () => void;
+  onStartPlacement: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id, disabled: locked });
 
-      {/* All puzzles option */}
-      <div
-        onClick={() => onSelectChain(null)}
-        style={{
-          padding: 6,
-          cursor: "pointer",
-          fontWeight: 600,
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.55 : 1,
+  } as const;
+
+  return (
+    <Box ref={setNodeRef} style={style}>
+      <ListItemButton
+        selected={selected}
+        onClick={onSelect}
+        onMouseEnter={onHoverIn}
+        onMouseLeave={onHoverOut}
+        sx={{
+          mb: 0.5,
+          borderRadius: 1,
+          border: "1px solid",
+          borderColor: "divider",
+          userSelect: "none",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 1,
+          pr: 1,
+          minWidth: 0,
+          overflowX: "hidden",
         }}
       >
-        All
-      </div>
+        <IconButton
+          size="small"
+          aria-label={locked ? "Step locked" : "Drag step"}
+          edge="start"
+          {...(locked ? {} : attributes)}
+          {...(locked ? {} : listeners)}
+          disabled={locked}
+          sx={{
+            mt: 0.25,
+            cursor: locked ? "default" : "grab",
+            touchAction: locked ? "auto" : "none",
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          {locked ? <LockIcon fontSize="small" /> : <DragIndicatorIcon fontSize="small" />}
+        </IconButton>
 
-      {chains.map((c) => (
-        <div key={c.id} style={{ marginTop: 10 }}>
-          <div
-            onClick={() => onSelectChain(c.id)}
-            style={{ cursor: "pointer", fontWeight: 600 }}
-          >
-            {c.name || "Untitled Chain"}
-          </div>
-
-          {puzzles
-            .filter((p) => p.chain_id === c.id)
-            .map((p) => (
-              <div
-                key={p.id}
-                onClick={() => onSelectPuzzle(p)}
-                style={{
-                  paddingLeft: 12,
-                  cursor: "pointer",
-                  background: selectedId === p.id ? "#eee" : "transparent",
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }}>
+              {stepNumber}. {stepType}
+            </Typography>
+            {!hasCoords && (
+              <Chip
+                size="small"
+                label={placing ? "Placing…" : "Set on map"}
+                color={placing ? "primary" : "default"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartPlacement();
                 }}
+              />
+            )}
+          </Box>
+          <Typography variant="caption" color="text.secondary" noWrap>
+            {stepContent}
+          </Typography>
+        </Box>
+      </ListItemButton>
+    </Box>
+  );
+}
+
+export default function Sidebar({
+  countryName,
+  regions,
+  chains,
+  steps,
+  treasures,
+  selectedRegionId,
+  selectedChainId,
+  selectedStepId,
+  selectedTreasureId,
+  placementStepId,
+  onStartStepPlacement,
+  onHoverChange,
+  onBack,
+  onSelectRegion,
+  onSelectChain,
+  onSelectStep,
+  onSelectTreasure,
+  onReorderSteps,
+  onStepsOrderDraftChange,
+  onCreateRegion,
+  onCreateChain,
+  onCreateStep,
+  onZoomToRegion,
+  onZoomToChain,
+  newChainDraft,
+  onNewChainDraftChange,
+  onStartNewChainPlacement,
+  onCancelNewChainPlacement,
+  newChainPlacementActive,
+  newTreasureDraft,
+  onNewTreasureDraftChange,
+  onStartNewTreasurePlacement,
+  onCancelNewTreasurePlacement,
+  newTreasurePlacementActive,
+  onCreateTreasure,
+  onSetChainImage,
+  onRemoveChainImage,
+  getImageUrl,
+}: Props) {
+  const selectedRegion = selectedRegionId
+    ? regions.find((r) => r.id === selectedRegionId) || null
+    : null;
+
+  const selectedChain = selectedChainId
+    ? chains.find((c) => c.id === selectedChainId) || null
+    : null;
+
+  const headerLabel = selectedChain?.title || selectedRegion?.name || countryName;
+
+  const showBack = selectedRegionId !== null;
+
+  const regionChains = selectedRegionId
+    ? chains.filter((c) => c.region_id === selectedRegionId)
+    : [];
+
+  const sortedSteps = useMemo(
+    () => steps.slice().sort((a, b) => a.order_index - b.order_index),
+    [steps],
+  );
+
+  const serverOrderedStepIds = useMemo(
+    () => sortedSteps.map((s) => s.id),
+    [sortedSteps],
+  );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }),
+  );
+
+  const [draftOrderedStepIds, setDraftOrderedStepIds] = useState<string[]>([]);
+  const [isDirty, setIsDirty] = useState(false);
+
+  const [regionDialogOpen, setRegionDialogOpen] = useState(false);
+  const [regionName, setRegionName] = useState("");
+  const [regionSlug, setRegionSlug] = useState("");
+  const chainTitle = newChainDraft.title;
+  const chainLat = newChainDraft.lat;
+  const chainLng = newChainDraft.lng;
+  const [createLocationMode, setCreateLocationMode] = useState(false);
+
+  const treasureLat = newTreasureDraft.lat;
+  const treasureLng = newTreasureDraft.lng;
+  const [createTreasureMode, setCreateTreasureMode] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedChainId) return;
+    queueMicrotask(() => {
+      setDraftOrderedStepIds(serverOrderedStepIds);
+      setIsDirty(false);
+      onStepsOrderDraftChange({
+        chainId: selectedChainId,
+        orderedStepIds: serverOrderedStepIds,
+        isDirty: false,
+      });
+    });
+  }, [onStepsOrderDraftChange, selectedChainId, serverOrderedStepIds]);
+
+  const draftSteps = useMemo(() => {
+    const byId = new Map(sortedSteps.map((s) => [s.id, s] as const));
+    return draftOrderedStepIds
+      .map((id) => byId.get(id) || null)
+      .filter((s): s is PuzzleStep => s !== null);
+  }, [draftOrderedStepIds, sortedSteps]);
+
+  const pinnedInfoStepId = useMemo(() => {
+    const pinned = sortedSteps.find((s) => s.type === "info" && s.order_index === 0);
+    return pinned ? pinned.id : null;
+  }, [sortedSteps]);
+
+  const stepsWithCoordsCount = useMemo(
+    () => draftSteps.filter((s) => s.latitude != null && s.longitude != null).length,
+    [draftSteps],
+  );
+
+  const onDragEnd = (event: DragEndEvent) => {
+    if (!selectedChainId) return;
+
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : null;
+    if (!overId || activeId === overId) return;
+
+    // The first info step is pinned and cannot move, and nothing can be placed before it.
+    if (pinnedInfoStepId) {
+      if (activeId === pinnedInfoStepId) return;
+      if (overId === pinnedInfoStepId) return;
+    }
+
+    const from = draftOrderedStepIds.indexOf(activeId);
+    const to = draftOrderedStepIds.indexOf(overId);
+    if (from === -1 || to === -1) return;
+
+    const nextOrder = arrayMove(draftOrderedStepIds, from, to);
+    if (pinnedInfoStepId && nextOrder[0] !== pinnedInfoStepId) return;
+    const nextDirty =
+      nextOrder.length !== serverOrderedStepIds.length ||
+      nextOrder.some((id, i) => id !== serverOrderedStepIds[i]);
+
+    setDraftOrderedStepIds(nextOrder);
+    setIsDirty(nextDirty);
+    onStepsOrderDraftChange({
+      chainId: selectedChainId,
+      orderedStepIds: nextOrder,
+      isDirty: nextDirty,
+    });
+  };
+
+  const discardDraft = () => {
+    if (!selectedChainId) return;
+    setDraftOrderedStepIds(serverOrderedStepIds);
+    setIsDirty(false);
+    onStepsOrderDraftChange({
+      chainId: selectedChainId,
+      orderedStepIds: serverOrderedStepIds,
+      isDirty: false,
+    });
+  };
+
+  const saveDraft = () => {
+    if (!selectedChainId) return;
+    if (pinnedInfoStepId && draftOrderedStepIds[0] !== pinnedInfoStepId) {
+      setCreateError("The first info step is pinned and must stay first.");
+      return;
+    }
+    onReorderSteps(draftOrderedStepIds);
+    setIsDirty(false);
+    onStepsOrderDraftChange({
+      chainId: selectedChainId,
+      orderedStepIds: draftOrderedStepIds,
+      isDirty: false,
+    });
+  };
+
+  const submitRegion = async () => {
+    if (!regionName.trim()) {
+      setCreateError("Name is required.");
+      return;
+    }
+    setCreateError(null);
+    setCreateBusy(true);
+    try {
+      await onCreateRegion({
+        name: regionName.trim(),
+        slug: regionSlug.trim() || undefined,
+      });
+      setRegionDialogOpen(false);
+      setRegionName("");
+      setRegionSlug("");
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const submitChain = async () => {
+    if (!selectedRegionId) {
+      setCreateError("Select a region first.");
+      return;
+    }
+    if (!chainTitle.trim()) {
+      setCreateError("Title is required.");
+      return;
+    }
+    if (chainLat.trim() === "" || chainLng.trim() === "") {
+      setCreateError("Latitude and longitude are required.");
+      return;
+    }
+    const latitude = Number(chainLat.trim());
+    const longitude = Number(chainLng.trim());
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      setCreateError("Latitude/longitude must be valid numbers.");
+      return;
+    }
+    setCreateError(null);
+    setCreateBusy(true);
+    try {
+      await onCreateChain({
+        title: chainTitle.trim(),
+        regionId: selectedRegionId,
+        latitude,
+        longitude,
+      });
+      onNewChainDraftChange({ title: "", lat: "", lng: "" });
+      onCancelNewChainPlacement();
+      setCreateLocationMode(false);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const submitTreasure = async () => {
+    if (!selectedRegionId) {
+      setCreateError("Select a region first.");
+      return;
+    }
+    if (treasureLat.trim() === "" || treasureLng.trim() === "") {
+      setCreateError("Latitude and longitude are required.");
+      return;
+    }
+    const latitude = Number(treasureLat.trim());
+    const longitude = Number(treasureLng.trim());
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      setCreateError("Latitude/longitude must be valid numbers.");
+      return;
+    }
+    setCreateError(null);
+    setCreateBusy(true);
+    try {
+      await onCreateTreasure({
+        regionId: selectedRegionId,
+        latitude,
+        longitude,
+      });
+      onNewTreasureDraftChange({ lat: "", lng: "" });
+      onCancelNewTreasurePlacement();
+      setCreateTreasureMode(false);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const addStep = async () => {
+    if (!selectedChainId) return;
+    setCreateError(null);
+    setCreateBusy(true);
+    try {
+      await onCreateStep({ chainId: selectedChainId });
+    } catch (e) {
+      const msg = formatSupabaseError(e);
+      console.error("Failed to create step:", msg);
+      setCreateError(msg);
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const treasureBlock = selectedRegionId && !selectedChainId ? (
+    <Box sx={{ px: 1, py: 0.5 }}>
+      <Typography variant="overline" sx={{ color: "text.secondary" }}>
+        Treasures
+      </Typography>
+      <List dense>
+        {treasures.map((t) => (
+          <ListItemButton
+            key={t.id}
+            selected={selectedTreasureId === t.id}
+            onClick={() => onSelectTreasure(t.id)}
+            onMouseEnter={() => onHoverChange({ kind: "treasure", id: t.id })}
+            onMouseLeave={() => onHoverChange(null)}
+          >
+            <ListItemText
+              primary={t.status}
+              secondary={`${Number(t.latitude).toFixed(4)}, ${Number(t.longitude).toFixed(4)}`}
+            />
+          </ListItemButton>
+        ))}
+      </List>
+      {treasures.length === 0 && (
+        <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
+          No treasures in this region.
+        </Typography>
+      )}
+    </Box>
+  ) : null;
+
+  const CreateOnMapForm = (input: {
+    heading: string;
+    title: string;
+    lat: string;
+    lng: string;
+    placementActive: boolean;
+    onChange: (next: { title: string; lat: string; lng: string }) => void;
+    onPickOnMap: () => void;
+    onCancel: () => void;
+    onCreate: () => void;
+    createDisabled: boolean;
+  }) => {
+    return (
+      <Box sx={{ px: 1 }}>
+        <Typography variant="overline" sx={{ color: "text.secondary" }}>
+          {input.heading}
+        </Typography>
+
+        <TextField
+          label="Title"
+          value={input.title}
+          onChange={(e) => input.onChange({ title: e.target.value, lat: input.lat, lng: input.lng })}
+          fullWidth
+          autoFocus
+          size="small"
+          sx={{ mt: 1 }}
+        />
+
+        <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+          <TextField
+            label="Latitude"
+            value={input.lat}
+            onChange={(e) => input.onChange({ title: input.title, lat: e.target.value, lng: input.lng })}
+            fullWidth
+            size="small"
+            inputMode="decimal"
+          />
+          <TextField
+            label="Longitude"
+            value={input.lng}
+            onChange={(e) => input.onChange({ title: input.title, lat: input.lat, lng: e.target.value })}
+            fullWidth
+            size="small"
+            inputMode="decimal"
+          />
+        </Box>
+
+        <Button
+          fullWidth
+          variant={input.placementActive ? "contained" : "outlined"}
+          color={input.placementActive ? "warning" : "primary"}
+          size="small"
+          sx={{ mt: 1 }}
+          onClick={input.onPickOnMap}
+        >
+          {input.placementActive ? "Click the map to set coordinates…" : "Pick on map"}
+        </Button>
+
+        <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+          <Button variant="outlined" fullWidth disabled={createBusy} onClick={input.onCancel}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            fullWidth
+            disabled={createBusy || input.createDisabled}
+            onClick={input.onCreate}
+          >
+            Create
+          </Button>
+        </Box>
+
+        {createError && (
+          <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+            {createError}
+          </Typography>
+        )}
+      </Box>
+    );
+  };
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        width: 320,
+        borderRight: (t) => `1px solid ${t.palette.divider}`,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        overflowX: "hidden",
+      }}
+    >
+      <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 1 }}>
+        {showBack && (
+          <IconButton onClick={onBack} size="small" aria-label="Back">
+            <ArrowBackIcon fontSize="small" />
+          </IconButton>
+        )}
+        <Typography
+          variant="h6"
+          sx={{
+            fontWeight: 700,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {headerLabel}
+        </Typography>
+      </Box>
+      <Divider />
+
+      {!selectedRegionId && (
+        <>
+          <List dense sx={{ p: 1, overflow: "auto", flex: 1 }}>
+            {regions.map((r) => (
+              <ListItemButton
+                key={r.id}
+                onClick={() => onSelectRegion(r.id)}
+                onMouseEnter={() => onHoverChange({ kind: "region", id: r.id })}
+                onMouseLeave={() => onHoverChange(null)}
+                sx={{ minWidth: 0 }}
               >
-                {p.title || "Untitled"}
-              </div>
+                <ListItemText
+                  primary={
+                    <Typography
+                      variant="body1"
+                      noWrap
+                      sx={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
+                      {r.name}
+                    </Typography>
+                  }
+                  secondary={
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      noWrap
+                      sx={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
+                      {r.slug}
+                    </Typography>
+                  }
+                />
+              </ListItemButton>
             ))}
-        </div>
-      ))}
-    </div>
+          </List>
+          <Box sx={{ p: 1, borderTop: 1, borderColor: "divider" }}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => {
+                setCreateError(null);
+                setRegionDialogOpen(true);
+              }}
+            >
+              Add region
+            </Button>
+          </Box>
+        </>
+      )}
+
+      {selectedRegionId && !selectedChainId && (
+        <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+          <Box sx={{ p: 1, overflowY: "auto", overflowX: "hidden", flex: 1 }}>
+            {createTreasureMode ? (
+              <Box sx={{ px: 1 }}>
+                <Typography variant="overline" sx={{ color: "text.secondary" }}>
+                  Create treasure
+                </Typography>
+                <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+                  <TextField
+                    label="Latitude"
+                    value={treasureLat}
+                    onChange={(e) =>
+                      onNewTreasureDraftChange({
+                        lat: e.target.value,
+                        lng: treasureLng,
+                      })
+                    }
+                    fullWidth
+                    size="small"
+                    inputMode="decimal"
+                  />
+                  <TextField
+                    label="Longitude"
+                    value={treasureLng}
+                    onChange={(e) =>
+                      onNewTreasureDraftChange({
+                        lat: treasureLat,
+                        lng: e.target.value,
+                      })
+                    }
+                    fullWidth
+                    size="small"
+                    inputMode="decimal"
+                  />
+                </Box>
+                <Button
+                  fullWidth
+                  variant={newTreasurePlacementActive ? "contained" : "outlined"}
+                  color={newTreasurePlacementActive ? "warning" : "primary"}
+                  size="small"
+                  sx={{ mt: 1 }}
+                  onClick={onStartNewTreasurePlacement}
+                >
+                  {newTreasurePlacementActive
+                    ? "Click the map to set coordinates…"
+                    : "Pick on map"}
+                </Button>
+                <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    disabled={createBusy}
+                    onClick={() => {
+                      setCreateError(null);
+                      onNewTreasureDraftChange({ lat: "", lng: "" });
+                      onCancelNewTreasurePlacement();
+                      setCreateTreasureMode(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    disabled={
+                      createBusy ||
+                      treasureLat.trim() === "" ||
+                      treasureLng.trim() === "" ||
+                      !Number.isFinite(Number(treasureLat.trim())) ||
+                      !Number.isFinite(Number(treasureLng.trim()))
+                    }
+                    onClick={submitTreasure}
+                  >
+                    Create
+                  </Button>
+                </Box>
+                {createError && (
+                  <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                    {createError}
+                  </Typography>
+                )}
+              </Box>
+            ) : createLocationMode ? (
+              CreateOnMapForm({
+                heading: "Create location",
+                title: chainTitle,
+                lat: chainLat,
+                lng: chainLng,
+                placementActive: newChainPlacementActive,
+                onChange: onNewChainDraftChange,
+                onPickOnMap: onStartNewChainPlacement,
+                onCancel: () => {
+                  setCreateError(null);
+                  onNewChainDraftChange({ title: "", lat: "", lng: "" });
+                  onCancelNewChainPlacement();
+                  setCreateLocationMode(false);
+                },
+                onCreate: submitChain,
+                createDisabled:
+                  !chainTitle.trim() ||
+                  chainLat.trim() === "" ||
+                  chainLng.trim() === "" ||
+                  !Number.isFinite(Number(chainLat.trim())) ||
+                  !Number.isFinite(Number(chainLng.trim())),
+              })
+            ) : (
+              <>
+                <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
+                  Locations
+                </Typography>
+                <List dense>
+                  {regionChains.map((c) => (
+                    <ListItemButton
+                      key={c.id}
+                      selected={selectedChainId === c.id}
+                      onClick={() => onSelectChain(c.id)}
+                      onMouseEnter={() => onHoverChange({ kind: "chain", id: c.id })}
+                      onMouseLeave={() => onHoverChange(null)}
+                      sx={{ minWidth: 0 }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Typography noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {c.title}
+                          </Typography>
+                        }
+                      />
+                    </ListItemButton>
+                  ))}
+                </List>
+                <Divider sx={{ my: 1 }} />
+                {treasureBlock}
+              </>
+            )}
+          </Box>
+          <Box sx={{ p: 1, borderTop: 1, borderColor: "divider" }}>
+            <Button
+              fullWidth
+              variant="text"
+              sx={{ mb: 1 }}
+              onClick={onZoomToRegion}
+            >
+              Zoom to region
+            </Button>
+            <Button
+              fullWidth
+              variant="outlined"
+              disabled={createLocationMode || createTreasureMode}
+              sx={{ mb: 1 }}
+              onClick={() => {
+                setCreateError(null);
+                onNewTreasureDraftChange({ lat: "", lng: "" });
+                setCreateTreasureMode(true);
+              }}
+            >
+              Add treasure
+            </Button>
+            <Button
+              fullWidth
+              variant="outlined"
+              disabled={createLocationMode || createTreasureMode}
+              onClick={() => {
+                setCreateError(null);
+                onNewChainDraftChange({ title: "", lat: "", lng: "" });
+                setCreateLocationMode(true);
+              }}
+            >
+              Add location
+            </Button>
+          </Box>
+        </Box>
+      )}
+
+      {selectedRegionId && selectedChainId && (
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          <Box sx={{ p: 1, overflowY: "auto", overflowX: "hidden", flex: 1 }}>
+            {selectedChain && (
+              <Box sx={{ px: 1, mb: 1 }}>
+                {selectedChain.image_url ? (
+                  <Box sx={{ mb: 1 }}>
+                    <Box
+                      component="img"
+                      src={getImageUrl(selectedChain.image_url)}
+                      alt="Chain image"
+                      sx={{
+                        width: "100%",
+                        borderRadius: 2,
+                        maxHeight: 140,
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="text"
+                      onClick={async () => {
+                        await onRemoveChainImage({ chainId: selectedChain.id });
+                      }}
+                      sx={{ mt: 0.5 }}
+                    >
+                      Remove image
+                    </Button>
+                  </Box>
+                ) : null}
+
+                <Button component="label" variant="outlined" size="small" fullWidth>
+                  {selectedChain.image_url ? "Replace chain image" : "Upload chain image"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!file) return;
+                      await onSetChainImage({ chainId: selectedChain.id, file });
+                    }}
+                  />
+                </Button>
+              </Box>
+            )}
+
+            <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
+              Steps (drag handle to reorder)
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ px: 1, display: "block", mb: 1 }}>
+              Steps with coordinates: {stepsWithCoordsCount}/{draftSteps.length}
+            </Typography>
+
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={onDragEnd}
+            >
+              <SortableContext
+                items={draftOrderedStepIds}
+                strategy={verticalListSortingStrategy}
+              >
+                <List dense sx={{ pb: 1 }}>
+                  {draftSteps.map((s, idx) => (
+                    <SortableStepRow
+                      key={s.id}
+                      id={s.id}
+                      selected={selectedStepId === s.id}
+                      stepNumber={idx + 1}
+                      stepType={s.type}
+                      stepContent={s.content}
+                      hasCoords={s.latitude != null && s.longitude != null}
+                      locked={pinnedInfoStepId === s.id}
+                      placing={placementStepId === s.id}
+                      onSelect={() => onSelectStep(s.id)}
+                      onHoverIn={() => onHoverChange({ kind: "step", id: s.id })}
+                      onHoverOut={() => onHoverChange(null)}
+                      onStartPlacement={() => onStartStepPlacement(s.id)}
+                    />
+                  ))}
+                </List>
+              </SortableContext>
+            </DndContext>
+          </Box>
+
+          <Box
+            sx={{
+              flexShrink: 0,
+              pt: 1,
+              pb: 1,
+              px: 1,
+              bgcolor: "background.paper",
+              borderTop: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Button
+              fullWidth
+              variant="text"
+              sx={{ mb: 1 }}
+              onClick={onZoomToChain}
+            >
+              Zoom to location
+            </Button>
+            <Button
+              fullWidth
+              variant="outlined"
+              sx={{ mb: 1 }}
+              disabled={createBusy}
+              onClick={addStep}
+            >
+              Add step
+            </Button>
+            {createError && !regionDialogOpen && (
+              <Typography
+                variant="body2"
+                color="error"
+                sx={{ mb: 1, px: 0.5 }}
+              >
+                {createError}
+              </Typography>
+            )}
+            <Box sx={{ display: "flex", gap: 1 }}>
+              <Button
+                variant="contained"
+                fullWidth
+                disabled={!isDirty}
+                onClick={saveDraft}
+              >
+                Save order
+              </Button>
+              <Button
+                variant="outlined"
+                fullWidth
+                disabled={!isDirty}
+                onClick={discardDraft}
+              >
+                Discard
+              </Button>
+            </Box>
+          </Box>
+        </Box>
+      )}
+
+      <Dialog
+        open={regionDialogOpen}
+        onClose={() => !createBusy && setRegionDialogOpen(false)}
+      >
+        <DialogTitle>New region</DialogTitle>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+          <TextField
+            label="Name"
+            value={regionName}
+            onChange={(e) => setRegionName(e.target.value)}
+            fullWidth
+            autoFocus
+            size="small"
+          />
+          <TextField
+            label="Slug (optional)"
+            value={regionSlug}
+            onChange={(e) => setRegionSlug(e.target.value)}
+            fullWidth
+            size="small"
+            helperText="Leave blank to derive from name."
+          />
+          {createError && (
+            <Typography variant="body2" color="error">
+              {createError}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRegionDialogOpen(false)} disabled={createBusy}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={submitRegion} disabled={createBusy}>
+            Create
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+    </Paper>
   );
 }
