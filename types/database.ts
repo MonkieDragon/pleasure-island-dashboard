@@ -27,6 +27,12 @@ export function isPuzzleStepType(value: string): value is PuzzleStepType {
   );
 }
 
+export function isQuestionStepType(
+  type: PuzzleStepType,
+): type is "text" | "number" {
+  return type === "text" || type === "number";
+}
+
 // DB-derived row type (matches Supabase exactly; `type` is `string` in DB).
 export type PuzzleStep = PuzzleStepRow;
 

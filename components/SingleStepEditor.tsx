@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { PuzzleStep, PuzzleStepType, isPuzzleStepType } from "@/types/database";
+import {
+  PuzzleStep,
+  PuzzleStepType,
+  isPuzzleStepType,
+  isQuestionStepType,
+} from "@/types/database";
 import {
   Box,
   Button,
+  Checkbox,
   Divider,
   FormControl,
+  FormControlLabel,
   FormHelperText,
   InputLabel,
   MenuItem,
@@ -50,6 +57,9 @@ function parseOptionalNumber(input: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Matches numeric answers for question steps (integers/decimals, optional leading minus). */
+const NUMERIC_ANSWER_PATTERN = /^-?\d+(\.\d+)?$/;
+
 function toDraft(step: PuzzleStep): Draft {
   const type: PuzzleStepType = isPuzzleStepType(step.type) ? step.type : "text";
   const rawAnswer = step.answer;
@@ -81,7 +91,8 @@ export default function SingleStepEditor({
   getImageUrl,
 }: Props) {
   const [draftByStepId, setDraftByStepId] = useState<Record<string, Draft>>({});
-  const [error, setError] = useState<string | null>(null);
+  const [answerError, setAnswerError] = useState<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   const draft = useMemo(() => {
     if (!step) return null;
@@ -119,12 +130,9 @@ export default function SingleStepEditor({
   }, [step]);
 
   useEffect(() => {
-    if (!step || !draft) return;
-    // #region agent log
-    fetch('http://127.0.0.1:7442/ingest/f0352e41-ced3-412d-9b60-e73645ea4888',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'790358'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H4_editor_draft_stale',location:'components/SingleStepEditor.tsx:draft_vs_step',message:'Step coords vs draft coords',data:{stepId:step.id,stepLat:step.latitude,stepLng:step.longitude,draftLat:draft.latText,draftLng:draft.lngText},timestamp:Date.now()})}).catch(()=>{});
-    fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H4_editor_draft_stale',location:'components/SingleStepEditor.tsx:draft_vs_step:relay',message:'Step coords vs draft coords (relay)',data:{stepId:step.id,stepLat:step.latitude,stepLng:step.longitude,draftLat:draft.latText,draftLng:draft.lngText},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, [draft, step]);
+    setAnswerError(null);
+    setMapError(null);
+  }, [step?.id]);
 
   const dirty = useMemo(() => {
     if (!step || !draft) return false;
@@ -151,14 +159,16 @@ export default function SingleStepEditor({
     const a = draft.answerText.trim();
 
     if (draft.type === "number") {
-      // Accept integers/decimals, optional leading minus.
-      if (a === "") return "Number steps need an answer.";
-      if (!/^-?\d+(\.\d+)?$/.test(a)) {
-        return "Answer must be numeric.";
+      if (a === "") return "Question steps need an answer.";
+      if (!NUMERIC_ANSWER_PATTERN.test(a)) {
+        return "Answer must be a valid number.";
       }
     }
     if (draft.type === "text") {
-      if (a === "") return "Text steps need an answer.";
+      if (a === "") return "Question steps need an answer.";
+      if (NUMERIC_ANSWER_PATTERN.test(a)) {
+        return 'This answer looks numeric — enable "Number" so the app uses the numeric keyboard and validates correctly.';
+      }
     }
     if (draft.type === "qr") {
       if (a === "") return "QR steps need a QR payload.";
@@ -175,7 +185,7 @@ export default function SingleStepEditor({
   const save = async () => {
     if (!step || !draft) return;
     const validationError = validate();
-    setError(validationError);
+    setAnswerError(validationError);
     if (validationError) return;
 
     const trimmedAnswer = draft.answerText.trim();
@@ -214,6 +224,9 @@ export default function SingleStepEditor({
   }
 
   const stepImagePath = step.image_path || null;
+  const isQuestion = isQuestionStepType(draft.type);
+  const showAnswerRow =
+    isQuestion || draft.type === "multiple_choice" || draft.type === "qr";
 
   return (
     <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
@@ -228,12 +241,15 @@ export default function SingleStepEditor({
           <Select
             labelId="step-type-label"
             label="Type"
-            value={draft.type}
-            onChange={(e) => setDraft({ type: e.target.value as PuzzleStepType })}
+            value={isQuestion ? "question" : draft.type}
+            onChange={(e) => {
+              const v = e.target.value as PuzzleStepType | "question";
+              if (v === "question") setDraft({ type: "text" });
+              else setDraft({ type: v });
+            }}
           >
             <MenuItem value="info">info</MenuItem>
-            <MenuItem value="text">text</MenuItem>
-            <MenuItem value="number">number</MenuItem>
+            <MenuItem value="question">question</MenuItem>
             <MenuItem value="qr">qr-code</MenuItem>
             <MenuItem value="multiple_choice">multiple-choice</MenuItem>
           </Select>
@@ -248,47 +264,55 @@ export default function SingleStepEditor({
           size="small"
         />
 
-        {(draft.type === "number" ||
-          draft.type === "multiple_choice" ||
-          draft.type === "text" ||
-          draft.type === "qr") && (
+        {showAnswerRow && (
           <FormControl
             size="small"
+            fullWidth
             error={
-              !!error &&
-              (draft.type === "number" ||
-                draft.type === "text" ||
-                draft.type === "qr" ||
-                draft.type === "multiple_choice")
+              !!answerError &&
+              (isQuestion || draft.type === "qr" || draft.type === "multiple_choice")
             }
           >
-            <TextField
-              label={draft.type === "qr" ? "QR payload" : "Answer"}
-              value={draft.answerText}
-              onChange={(e) => setDraft({ answerText: e.target.value })}
-              placeholder={
-                draft.type === "number"
-                  ? "e.g. 42"
-                  : draft.type === "qr"
-                    ? "QR payload / code"
-                    : "answer text"
-              }
-              size="small"
-              error={
-                !!error &&
-                (draft.type === "number" ||
-                  draft.type === "text" ||
-                  draft.type === "qr" ||
-                  draft.type === "multiple_choice")
-              }
-            />
-            {!!error &&
-              (draft.type === "number" ||
-                draft.type === "text" ||
-                draft.type === "qr" ||
-                draft.type === "multiple_choice") && (
-              <FormHelperText>{error}</FormHelperText>
-            )}
+            <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
+              <TextField
+                label={draft.type === "qr" ? "QR payload" : "Answer"}
+                value={draft.answerText}
+                onChange={(e) => setDraft({ answerText: e.target.value })}
+                placeholder={
+                  draft.type === "number"
+                    ? "e.g. 42"
+                    : draft.type === "qr"
+                      ? "QR payload / code"
+                      : "answer text"
+                }
+                size="small"
+                fullWidth
+                sx={{ flex: 1 }}
+                error={
+                  !!answerError &&
+                  (isQuestion || draft.type === "qr" || draft.type === "multiple_choice")
+                }
+              />
+              {isQuestion && (
+                <FormControlLabel
+                  sx={{ mt: 0.5, flexShrink: 0, mr: 0 }}
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={draft.type === "number"}
+                      onChange={(_, checked) =>
+                        setDraft({ type: checked ? "number" : "text" })
+                      }
+                    />
+                  }
+                  label="Number"
+                />
+              )}
+            </Box>
+            {!!answerError &&
+              (isQuestion || draft.type === "qr" || draft.type === "multiple_choice") && (
+                <FormHelperText>{answerError}</FormHelperText>
+              )}
           </FormControl>
         )}
 
@@ -407,14 +431,14 @@ export default function SingleStepEditor({
                 const pinned = step.type === "info" && step.order_index === 0;
 
                 if (pinned && (lat === null || lng === null)) {
-                  setError("The first info step must have latitude and longitude.");
+                  setMapError("The first info step must have latitude and longitude.");
                   return;
                 }
                 if ((lat === null) !== (lng === null)) {
-                  setError("Provide both latitude and longitude (or clear both).");
+                  setMapError("Provide both latitude and longitude (or clear both).");
                   return;
                 }
-                setError(null);
+                setMapError(null);
                 await onUpdate({ ...step, latitude: lat, longitude: lng });
               }}
             >
@@ -458,9 +482,9 @@ export default function SingleStepEditor({
           </Typography>
         </Box>
 
-        {!!error && draft.type !== "number" && (
+        {!!mapError && (
           <Typography variant="body2" color="error">
-            {error}
+            {mapError}
           </Typography>
         )}
 
