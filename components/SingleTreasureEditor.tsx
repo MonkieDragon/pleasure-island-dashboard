@@ -4,10 +4,22 @@ import {
   Box,
   Button,
   Divider,
+  FormControl,
+  FormHelperText,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+
+const TREASURE_STATUSES = ["available", "assigned", "discovered"] as const;
+type TreasureStatus = (typeof TREASURE_STATUSES)[number];
+
+function isTreasureStatus(input: string): input is TreasureStatus {
+  return (TREASURE_STATUSES as readonly string[]).includes(input);
+}
 
 type Draft = {
   description: string;
@@ -118,11 +130,16 @@ export default function SingleTreasureEditor({
   const saveDetails = async () => {
     if (!treasure || !draft) return;
     setError(null);
+    const nextStatusRaw = draft.status.trim();
+    if (nextStatusRaw !== "" && !isTreasureStatus(nextStatusRaw)) {
+      setError(`Status must be one of: ${TREASURE_STATUSES.join(", ")}.`);
+      return;
+    }
     const next: Treasure = {
       ...treasure,
       description: draft.description.trim() === "" ? null : draft.description.trim(),
       notes: draft.notes.trim() === "" ? null : draft.notes.trim(),
-      status: draft.status.trim() === "" ? treasure.status : draft.status.trim(),
+      status: nextStatusRaw === "" ? treasure.status : nextStatusRaw,
     };
     await onUpdate(next);
   };
@@ -152,7 +169,7 @@ export default function SingleTreasureEditor({
     );
   }
 
-  const imagePath = treasure.image_url || null;
+  const imagePath = treasure.image_path || null;
 
   return (
     <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
@@ -178,13 +195,22 @@ export default function SingleTreasureEditor({
           {formatTs(treasure.assigned_at)}
         </Typography>
 
-        <TextField
-          label="Status"
-          value={draft.status}
-          onChange={(e) => setDraft({ status: e.target.value })}
-          size="small"
-          helperText="e.g. available, discovered"
-        />
+        <FormControl size="small">
+          <InputLabel id="treasure-status-label">Status</InputLabel>
+          <Select
+            labelId="treasure-status-label"
+            label="Status"
+            value={draft.status}
+            onChange={(e) => setDraft({ status: String(e.target.value) })}
+          >
+            {TREASURE_STATUSES.map((s) => (
+              <MenuItem key={s} value={s}>
+                {s}
+              </MenuItem>
+            ))}
+          </Select>
+          <FormHelperText>Choose one of the allowed statuses.</FormHelperText>
+        </FormControl>
 
         <TextField
           label="Description"

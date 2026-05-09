@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { formatSupabaseError } from "@/lib/supabaseError";
 import type { PostgrestError } from "@supabase/supabase-js";
@@ -15,6 +16,7 @@ import dynamic from "next/dynamic";
 import {
   Box,
   Button,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -30,7 +32,55 @@ console.log("DASHBOARD MODULE LOADED");
 console.log("SUPABASE URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
 console.log("SUPABASE KEY:", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
+type AccessState = "loading" | "denied" | "staff";
+
 export default function Dashboard() {
+  const router = useRouter();
+  const [access, setAccess] = useState<AccessState>("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function applySession(
+      session: import("@supabase/supabase-js").Session | null,
+    ) {
+      if (cancelled) return;
+      if (!session) {
+        router.replace("/login");
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      const role = profile?.role;
+      if (role !== "editor" && role !== "admin") {
+        setAccess("denied");
+        return;
+      }
+      setAccess("staff");
+    }
+
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      void applySession(session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      void applySession(session);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [router]);
+
+  const accessOk = access === "staff";
+
   type Placement =
     | null
     | { kind: "step"; stepId: string }
@@ -106,6 +156,7 @@ export default function Dashboard() {
   // LOAD REGIONS (once)
   // ----------------------------
   useEffect(() => {
+    if (!accessOk) return;
     supabase
       .from("regions")
       .select("*")
@@ -117,22 +168,24 @@ export default function Dashboard() {
           ) as Region[],
         );
       });
-  }, []);
+  }, [accessOk]);
 
   // ----------------------------
   // LOAD CHAINS (once)
   // ----------------------------
   useEffect(() => {
+    if (!accessOk) return;
     supabase
       .from("puzzle_chains")
       .select("*")
       .then(({ data }) => setChains((data || []) as PuzzleChain[]));
-  }, []);
+  }, [accessOk]);
 
   // ----------------------------
   // LOAD STEPS (when chain changes)
   // ----------------------------
   useEffect(() => {
+    if (!accessOk) return;
     if (!selectedChainId) {
       queueMicrotask(() => {
         setSteps([]);
@@ -163,12 +216,13 @@ export default function Dashboard() {
         setSteps(data || []);
         setStepsLoadedForChainId(selectedChainId);
       });
-  }, [selectedChainId]);
+  }, [accessOk, selectedChainId]);
 
   // ----------------------------
   // LOAD REGION STEPS + TREASURES (when region changes)
   // ----------------------------
   useEffect(() => {
+    if (!accessOk) return;
     const load = async () => {
       if (!selectedRegionId) {
         queueMicrotask(() => {
@@ -207,7 +261,7 @@ export default function Dashboard() {
     };
 
     void load();
-  }, [selectedRegionId, chains]);
+  }, [accessOk, selectedRegionId, chains]);
 
   const moveStep = async (id: string, lat: number, lng: number) => {
     // #region agent log
@@ -273,7 +327,7 @@ export default function Dashboard() {
         status: updated.status,
         latitude: updated.latitude,
         longitude: updated.longitude,
-        image_url: updated.image_url,
+        image_path: updated.image_path,
       })
       .eq("id", updated.id);
     if (error) throw new Error(formatSupabaseError(error));
@@ -287,21 +341,21 @@ export default function Dashboard() {
       input.file.name && input.file.name.includes(".")
         ? input.file.name.split(".").pop()
         : "jpg";
-    const objectPath = `treasures/${input.treasureId}/${crypto.randomUUID()}.${ext}`;
+    const objectPath = `treasures/${input.treasureId}.${ext}`;
     const { error: uploadError } = await supabase.storage
-      .from("step-images")
-      .upload(objectPath, input.file, { upsert: false });
+      .from("images")
+      .upload(objectPath, input.file, { upsert: true });
     if (uploadError) throw new Error(formatSupabaseError(uploadError));
-    await updateTreasure({ ...t, image_url: objectPath });
+    await updateTreasure({ ...t, image_path: objectPath });
   };
 
   const removeTreasureImage = async (input: { treasureId: string }) => {
     const t = treasures.find((x) => x.id === input.treasureId) || null;
     if (!t) return;
-    if (t.image_url) {
-      await supabase.storage.from("step-images").remove([t.image_url]);
+    if (t.image_path) {
+      await supabase.storage.from("images").remove([t.image_path]);
     }
-    await updateTreasure({ ...t, image_url: null });
+    await updateTreasure({ ...t, image_path: null });
   };
 
   // ----------------------------
@@ -344,8 +398,8 @@ export default function Dashboard() {
     );
   };
 
-  const getStepImageUrl = (path: string) => {
-    return supabase.storage.from("step-images").getPublicUrl(path).data.publicUrl;
+  const getImageUrl = (path: string) => {
+    return supabase.storage.from("images").getPublicUrl(path).data.publicUrl;
   };
 
   const setChainImage = async (input: { chainId: string; file: File }) => {
@@ -356,29 +410,36 @@ export default function Dashboard() {
       input.file.name && input.file.name.includes(".")
         ? input.file.name.split(".").pop()
         : "jpg";
-    const objectPath = `${chain.id}/chain/${crypto.randomUUID()}.${ext}`;
+    const objectPath = `chains/${chain.id}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
-      .from("step-images")
-      .upload(objectPath, input.file, { upsert: false });
+      .from("images")
+      .upload(objectPath, input.file, { upsert: true });
     if (uploadError) throw new Error(formatSupabaseError(uploadError));
 
-    await supabase.from("puzzle_chains").update({ image_url: objectPath }).eq("id", chain.id);
+    await supabase
+      .from("puzzle_chains")
+      .update({ image_path: objectPath })
+      .eq("id", chain.id);
 
-    setChains((prev) => prev.map((c) => (c.id === chain.id ? { ...c, image_url: objectPath } : c)));
+    setChains((prev) =>
+      prev.map((c) => (c.id === chain.id ? { ...c, image_path: objectPath } : c)),
+    );
   };
 
   const removeChainImage = async (input: { chainId: string }) => {
     const chain = chains.find((c) => c.id === input.chainId) || null;
     if (!chain) return;
 
-    if (chain.image_url) {
-      await supabase.storage.from("step-images").remove([chain.image_url]);
+    if (chain.image_path) {
+      await supabase.storage.from("images").remove([chain.image_path]);
     }
 
-    await supabase.from("puzzle_chains").update({ image_url: null }).eq("id", chain.id);
+    await supabase.from("puzzle_chains").update({ image_path: null }).eq("id", chain.id);
 
-    setChains((prev) => prev.map((c) => (c.id === chain.id ? { ...c, image_url: null } : c)));
+    setChains((prev) =>
+      prev.map((c) => (c.id === chain.id ? { ...c, image_path: null } : c)),
+    );
   };
 
   const setStepImage = async (input: {
@@ -392,24 +453,24 @@ export default function Dashboard() {
       input.file.name && input.file.name.includes(".")
         ? input.file.name.split(".").pop()
         : "jpg";
-    const objectPath = `${step.chain_id}/${step.id}/${crypto.randomUUID()}.${ext}`;
+    const objectPath = `steps/${step.id}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
-      .from("step-images")
-      .upload(objectPath, input.file, { upsert: false });
+      .from("images")
+      .upload(objectPath, input.file, { upsert: true });
     if (uploadError) throw new Error(formatSupabaseError(uploadError));
 
-    await updateStep({ ...step, image_url: objectPath });
+    await updateStep({ ...step, image_path: objectPath });
   };
 
   const removeStepImage = async (input: { stepId: string }) => {
     const step = steps.find((s) => s.id === input.stepId) || null;
     if (!step) return;
 
-    if (step.image_url) {
-      await supabase.storage.from("step-images").remove([step.image_url]);
+    if (step.image_path) {
+      await supabase.storage.from("images").remove([step.image_path]);
     }
-    await updateStep({ ...step, image_url: null });
+    await updateStep({ ...step, image_path: null });
   };
 
   const reorderSteps = async (orderedStepIds: string[]) => {
@@ -739,6 +800,45 @@ export default function Dashboard() {
     setSelectedTreasureId(id);
   };
 
+  if (access === "loading") {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (access === "denied") {
+    return (
+      <Box sx={{ p: 4, maxWidth: 480 }}>
+        <Typography variant="h6" gutterBottom>
+          Access denied
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          This dashboard is only available to editor or admin accounts. Ask an
+          administrator to update your role in the database.
+        </Typography>
+        <Button
+          variant="contained"
+          onClick={() => {
+            void supabase.auth
+              .signOut()
+              .then(() => router.replace("/login"));
+          }}
+        >
+          Back to login
+        </Button>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ display: "flex", height: "100vh" }}>
       <Sidebar
@@ -754,7 +854,7 @@ export default function Dashboard() {
         placementStepId={placementStepId}
         onSetChainImage={setChainImage}
         onRemoveChainImage={removeChainImage}
-        getImageUrl={getStepImageUrl}
+        getImageUrl={getImageUrl}
         onStartStepPlacement={(stepId) => {
           setSelectedTreasureId(null);
           setSelectedStepId(stepId);
@@ -795,6 +895,9 @@ export default function Dashboard() {
         }}
         onCancelNewChainPlacement={() => {
           setPlacement((p) => (p?.kind === "newChain" ? null : p));
+        }}
+        onSignOut={() => {
+          void supabase.auth.signOut().then(() => router.replace("/login"));
         }}
       />
 
@@ -866,7 +969,7 @@ export default function Dashboard() {
             }}
             onSetImage={setTreasureImage}
             onRemoveImage={removeTreasureImage}
-            getImageUrl={getStepImageUrl}
+            getImageUrl={getImageUrl}
           />
         ) : (
           <SingleStepEditor
@@ -887,7 +990,7 @@ export default function Dashboard() {
             onDeleteStep={deleteStep}
             onSetImage={setStepImage}
             onRemoveImage={removeStepImage}
-            getImageUrl={getStepImageUrl}
+            getImageUrl={getImageUrl}
           />
         )}
       </Box>

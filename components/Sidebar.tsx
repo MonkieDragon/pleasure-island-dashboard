@@ -99,6 +99,7 @@ type Props = {
   onSetChainImage: (input: { chainId: string; file: File }) => Promise<void> | void;
   onRemoveChainImage: (input: { chainId: string }) => Promise<void> | void;
   getImageUrl: (path: string) => string;
+  onSignOut?: () => void;
 };
 
 function SortableStepRow({
@@ -242,6 +243,7 @@ export default function Sidebar({
   onSetChainImage,
   onRemoveChainImage,
   getImageUrl,
+  onSignOut,
 }: Props) {
   const selectedRegion = selectedRegionId
     ? regions.find((r) => r.id === selectedRegionId) || null
@@ -623,10 +625,16 @@ export default function Sidebar({
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            flex: 1,
           }}
         >
           {headerLabel}
         </Typography>
+        {onSignOut ? (
+          <Button size="small" variant="text" onClick={onSignOut}>
+            Sign out
+          </Button>
+        ) : null}
       </Box>
       <Divider />
 
@@ -866,11 +874,11 @@ export default function Sidebar({
           <Box sx={{ p: 1, overflowY: "auto", overflowX: "hidden", flex: 1 }}>
             {selectedChain && (
               <Box sx={{ px: 1, mb: 1 }}>
-                {selectedChain.image_url ? (
+                {selectedChain.image_path ? (
                   <Box sx={{ mb: 1 }}>
                     <Box
                       component="img"
-                      src={getImageUrl(selectedChain.image_url)}
+                      src={getImageUrl(selectedChain.image_path)}
                       alt="Chain image"
                       sx={{
                         width: "100%",
@@ -895,7 +903,7 @@ export default function Sidebar({
                 ) : null}
 
                 <Button component="label" variant="outlined" size="small" fullWidth>
-                  {selectedChain.image_url ? "Replace chain image" : "Upload chain image"}
+                  {selectedChain.image_path ? "Replace chain image" : "Upload chain image"}
                   <input
                     type="file"
                     accept="image/*"

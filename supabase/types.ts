@@ -39,11 +39,29 @@ export type Database = {
   }
   public: {
     Tables: {
+      profiles: {
+        Row: {
+          created_at: string
+          id: string
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          role?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: string
+        }
+        Relationships: []
+      }
       puzzle_chains: {
         Row: {
           created_at: string | null
           id: string
-          image_url: string | null
+          image_path: string | null
           latitude: number
           longitude: number
           region_id: string | null
@@ -52,7 +70,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
-          image_url?: string | null
+          image_path?: string | null
           latitude: number
           longitude: number
           region_id?: string | null
@@ -61,7 +79,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
-          image_url?: string | null
+          image_path?: string | null
           latitude?: number
           longitude?: number
           region_id?: string | null
@@ -85,7 +103,7 @@ export type Database = {
           created_at: string
           hints: Json | null
           id: string
-          image_url: string | null
+          image_path: string | null
           latitude: number | null
           longitude: number | null
           multiple_choice_options: string[] | null
@@ -100,7 +118,7 @@ export type Database = {
           created_at?: string
           hints?: Json | null
           id?: string
-          image_url?: string | null
+          image_path?: string | null
           latitude?: number | null
           longitude?: number | null
           multiple_choice_options?: string[] | null
@@ -115,7 +133,7 @@ export type Database = {
           created_at?: string
           hints?: Json | null
           id?: string
-          image_url?: string | null
+          image_path?: string | null
           latitude?: number | null
           longitude?: number | null
           multiple_choice_options?: string[] | null
@@ -137,6 +155,7 @@ export type Database = {
         Row: {
           country: string
           id: string
+          image_path: string | null
           latitude: number
           longitude: number
           name: string
@@ -145,6 +164,7 @@ export type Database = {
         Insert: {
           country?: string
           id?: string
+          image_path?: string | null
           latitude: number
           longitude: number
           name: string
@@ -153,6 +173,7 @@ export type Database = {
         Update: {
           country?: string
           id?: string
+          image_path?: string | null
           latitude?: number
           longitude?: number
           name?: string
@@ -168,7 +189,7 @@ export type Database = {
           description: string | null
           discovered_at: string | null
           id: string
-          image_url: string | null
+          image_path: string | null
           latitude: number
           longitude: number
           notes: string | null
@@ -183,7 +204,7 @@ export type Database = {
           description?: string | null
           discovered_at?: string | null
           id?: string
-          image_url?: string | null
+          image_path?: string | null
           latitude: number
           longitude: number
           notes?: string | null
@@ -198,7 +219,7 @@ export type Database = {
           description?: string | null
           discovered_at?: string | null
           id?: string
-          image_url?: string | null
+          image_path?: string | null
           latitude?: number
           longitude?: number
           notes?: string | null
@@ -221,7 +242,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_editor_or_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

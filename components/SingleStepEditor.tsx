@@ -213,7 +213,7 @@ export default function SingleStepEditor({
     );
   }
 
-  const stepImagePath = step.image_url || null;
+  const stepImagePath = step.image_path || null;
 
   return (
     <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
