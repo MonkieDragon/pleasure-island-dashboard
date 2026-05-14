@@ -14,7 +14,8 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { Box, Button, Chip, Paper, Typography } from "@mui/material";
+import MyLocationIcon from "@mui/icons-material/MyLocation";
+import { Alert, Box, Fab, Snackbar, Typography } from "@mui/material";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const ICON_SIZE: [number, number] = [36, 36];
@@ -105,6 +106,15 @@ type Props = {
   newTreasureDraftLatLng: [number, number] | null;
   onSetNewChainDraftLatLng: (lat: number, lng: number) => void;
   onSetNewTreasureDraftLatLng: (lat: number, lng: number) => void;
+
+  /** Sidebar "zoom to step" — recenters map without changing chain fit key. */
+  stepSpotlightToken: number;
+  stepSpotlightCenter: [number, number] | null;
+
+  /** When false, no geolocation UI or API calls (desktop). */
+  enableUserLocation: boolean;
+  /** Bumped when map container size may change (e.g. mobile layout). */
+  invalidateSizeKey?: number;
 };
 
 type LatLng = [number, number];
@@ -170,8 +180,6 @@ function CameraController({
       target.paddingRatio != null
         ? L.point(size.x * target.paddingRatio, size.y * target.paddingRatio)
         : L.point(target.paddingPx ?? 30, target.paddingPx ?? 30);
-    // flyToBounds provides a noticeably smoother camera animation than fitBounds
-    // (which can appear to jump depending on map state and browser).
     map.flyToBounds(bounds, {
       paddingTopLeft: padding,
       paddingBottomRight: padding,
@@ -181,6 +189,17 @@ function CameraController({
     });
   }, [cameraKey, map, target]);
 
+  return null;
+}
+
+function MapInvalidateSize({ token }: { token: number }) {
+  const map = useMap();
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      map.invalidateSize();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [map, token]);
   return null;
 }
 
@@ -218,6 +237,35 @@ function UserLocationController({
   return null;
 }
 
+function StepSpotlightController({
+  center,
+  token,
+}: {
+  center: LatLng | null;
+  token: number;
+}) {
+  const map = useMap();
+  const lastTokenRef = useRef<number>(-1);
+  useEffect(() => {
+    if (!center) return;
+    if (lastTokenRef.current === token) return;
+    lastTokenRef.current = token;
+    map.setView(center, CHAIN_FOCUS_ZOOM, CAMERA_ANIM);
+  }, [center, map, token]);
+  return null;
+}
+
+function placementHint(placement: Props["placement"]): string {
+  if (!placement) return "";
+  if (placement.kind === "newChain")
+    return "Tap the map to set the new chain location. Press Esc to cancel.";
+  if (placement.kind === "newTreasure")
+    return "Tap the map to place the new treasure. Press Esc to cancel.";
+  if (placement.kind === "treasure")
+    return "Tap the map to set the treasure location. Press Esc to cancel.";
+  return "Tap the map to place the step. Press Esc to cancel.";
+}
+
 export default function MapView(props: Props) {
   const {
     regions,
@@ -245,20 +293,21 @@ export default function MapView(props: Props) {
     newTreasureDraftLatLng,
     onSetNewChainDraftLatLng,
     onSetNewTreasureDraftLatLng,
+    stepSpotlightToken,
+    stepSpotlightCenter,
+    enableUserLocation,
+    invalidateSizeKey = 0,
   } = props;
-
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7442/ingest/f0352e41-ced3-412d-9b60-e73645ea4888',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'790358'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H0_logging_works',location:'components/MapView.tsx:mount',message:'MapView mounted (logging heartbeat)',data:{},timestamp:Date.now()})}).catch(()=>{});
-    fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H0_logging_works',location:'components/MapView.tsx:mount:relay',message:'MapView mounted (relay heartbeat)',data:{},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, []);
 
   const isRoot = !selectedRegionId;
   const showRegionMarkers = isRoot;
-  const regionChains = selectedRegionId
-    ? chains.filter((c) => c.region_id === selectedRegionId)
-    : [];
+  const regionChains = useMemo(
+    () =>
+      selectedRegionId
+        ? chains.filter((c) => c.region_id === selectedRegionId)
+        : [],
+    [chains, selectedRegionId],
+  );
 
   const visibleSteps = steps.filter((s) => s.chain_id === selectedChainId);
   const visibleStepsWithCoords = visibleSteps.filter(
@@ -297,9 +346,13 @@ export default function MapView(props: Props) {
     [visibleStepsWithCoords],
   );
 
-  const selectedChain = selectedChainId
-    ? regionChains.find((c) => c.id === selectedChainId) || null
-    : null;
+  const selectedChain = useMemo(
+    () =>
+      selectedChainId
+        ? regionChains.find((c) => c.id === selectedChainId) || null
+        : null,
+    [regionChains, selectedChainId],
+  );
 
   const viewLevel: "root" | "region" | "chain" = isRoot
     ? "root"
@@ -307,10 +360,16 @@ export default function MapView(props: Props) {
       ? "chain"
       : "region";
 
-  const chainAnchor: LatLng | null =
-    selectedChain && selectedChain.latitude != null && selectedChain.longitude != null
-      ? ([selectedChain.latitude, selectedChain.longitude] as LatLng)
-      : null;
+  const chainAnchor: LatLng | null = useMemo(() => {
+    if (
+      !selectedChain ||
+      selectedChain.latitude == null ||
+      selectedChain.longitude == null
+    ) {
+      return null;
+    }
+    return [selectedChain.latitude, selectedChain.longitude] as LatLng;
+  }, [selectedChain]);
 
   const chainStepPoints = chainPoints;
 
@@ -318,9 +377,9 @@ export default function MapView(props: Props) {
     if (viewLevel === "root") {
       const pts = sanitizeLatLngPoints(rootPoints);
       return pts.length >= 2
-        ? { kind: "fitBounds", points: pts, paddingRatio: 0.2, maxZoom: 8 }
+        ? { kind: "fitBounds", points: pts, paddingRatio: 0.12, maxZoom: 11 }
         : pts.length === 1
-          ? { kind: "setView", center: pts[0], zoom: 8 }
+          ? { kind: "setView", center: pts[0], zoom: 10 }
           : null;
     }
 
@@ -333,7 +392,6 @@ export default function MapView(props: Props) {
           : null;
     }
 
-    // Chain: wait for step fetch completion so we frame once using correct data.
     if (!chainStepsReady) return null;
 
     const stepPts = sanitizeLatLngPoints(chainStepPoints);
@@ -365,7 +423,6 @@ export default function MapView(props: Props) {
     if (viewLevel === "root") return "root";
     if (viewLevel === "region")
       return `region:${selectedRegionId ?? "none"}:focus:${focusToken}`;
-    // Include readiness so we can apply exactly once after the fetch completes.
     return `chain:${selectedChainId ?? "none"}:ready:${chainStepsReady ? 1 : 0}:focus:${focusToken}`;
   }, [viewLevel, selectedRegionId, selectedChainId, chainStepsReady, focusToken]);
 
@@ -414,14 +471,23 @@ export default function MapView(props: Props) {
       >
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
+          <MapInvalidateSize token={invalidateSizeKey} />
+
           <CameraController cameraKey={cameraKey} target={cameraTarget} />
+
+          <StepSpotlightController
+            center={stepSpotlightCenter}
+            token={stepSpotlightToken}
+          />
 
           <PlacementClickHandler
             active={placementActive}
             onPlacementMapClick={onPlacementMapClick}
           />
 
-          <UserLocationController location={userLocation} zoomToken={zoomToMeToken} />
+          {enableUserLocation && (
+            <UserLocationController location={userLocation} zoomToken={zoomToMeToken} />
+          )}
 
           {newChainDraftLatLng && (
             <Marker
@@ -510,10 +576,6 @@ export default function MapView(props: Props) {
                   mouseout: () => onHoverChange(null),
                   dragend: (e) => {
                     const pos = e.target.getLatLng();
-                    // #region agent log
-                    fetch('http://127.0.0.1:7442/ingest/f0352e41-ced3-412d-9b60-e73645ea4888',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'790358'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H3_drag_event_ok',location:'components/MapView.tsx:step:dragend',message:'Step marker dragend',data:{stepId:s.id,chainId:s.chain_id,lat:pos.lat,lng:pos.lng},timestamp:Date.now()})}).catch(()=>{});
-                    fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H3_drag_event_ok',location:'components/MapView.tsx:step:dragend:relay',message:'Step marker dragend (relay)',data:{stepId:s.id,chainId:s.chain_id,lat:pos.lat,lng:pos.lng},timestamp:Date.now()})}).catch(()=>{});
-                    // #endregion
                     onMoveStep(s.id, pos.lat, pos.lng);
                   },
                 }}
@@ -523,7 +585,7 @@ export default function MapView(props: Props) {
 
           {trail.length > 1 && <Polyline positions={trail} />}
 
-          {userLocation && (
+          {enableUserLocation && userLocation && (
             <CircleMarker
               center={userLocation}
               radius={8}
@@ -558,60 +620,40 @@ export default function MapView(props: Props) {
             })}
       </MapContainer>
 
-      <Paper
-        elevation={0}
-        sx={{
-          position: "absolute",
-          top: 12,
-          left: 12,
-          p: 1,
-          border: "1px solid",
-          borderColor: "divider",
-          bgcolor: "background.paper",
-          zIndex: 1000,
-        }}
-      >
-        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
-          <Chip size="small" label={isRoot ? "Regions" : "Region view"} />
-          <Chip size="small" label={`Chains: ${regionChains.length}`} />
-          <Chip size="small" label={`Steps: ${visibleStepsWithCoords.length}`} />
-          {viewLevel === "region" && (
-            <Chip size="small" label={`Treasures: ${treasures.length}`} />
-          )}
-          {placementActive && (
-            <Chip
-              size="small"
-              color="primary"
-              label={
-                placement?.kind === "newChain"
-                  ? "Click map to set new location · Esc to cancel"
-                  : placement?.kind === "newTreasure"
-                    ? "Click map to place new treasure · Esc to cancel"
-                    : placement?.kind === "treasure"
-                      ? "Click map to set treasure location · Esc to cancel"
-                      : "Click map to place step · Esc to cancel"
-              }
-              onDelete={onCancelPlacement}
-            />
-          )}
-        </Box>
+      {placementActive && placement && (
+        <Alert
+          severity="info"
+          onClose={onCancelPlacement}
+          sx={{
+            position: "absolute",
+            left: 8,
+            right: 8,
+            bottom: 8,
+            zIndex: 1000,
+            maxWidth: "calc(100% - 16px)",
+          }}
+        >
+          <Typography variant="body2">{placementHint(placement)}</Typography>
+        </Alert>
+      )}
 
-        <Box sx={{ display: "flex", gap: 1, mt: 1, alignItems: "center" }}>
-          <Button
+      {enableUserLocation && (
+        <>
+          <Fab
+            color="primary"
             size="small"
-            variant="outlined"
+            aria-label="Zoom to my location"
+            sx={{ position: "absolute", bottom: placementActive ? 88 : 16, right: 16, zIndex: 1000 }}
             onClick={() => {
               setUserLocationError(null);
               if (!navigator.geolocation) {
                 setUserLocationError("Geolocation is not supported in this browser.");
                 return;
               }
-
               if (userLocation) {
                 setZoomToMeToken((n) => n + 1);
                 return;
               }
-
               navigator.geolocation.getCurrentPosition(
                 (pos) => {
                   const next: LatLng = [pos.coords.latitude, pos.coords.longitude];
@@ -625,15 +667,17 @@ export default function MapView(props: Props) {
               );
             }}
           >
-            Zoom to my location
-          </Button>
-        </Box>
-        {userLocationError && (
-          <Typography variant="caption" color="error" sx={{ display: "block", mt: 0.5 }}>
-            {userLocationError}
-          </Typography>
-        )}
-      </Paper>
+            <MyLocationIcon />
+          </Fab>
+          <Snackbar
+            open={!!userLocationError}
+            autoHideDuration={6000}
+            onClose={() => setUserLocationError(null)}
+            message={userLocationError}
+            anchorOrigin={{ vertical: "top", horizontal: "center" }}
+          />
+        </>
+      )}
     </Box>
   );
 }

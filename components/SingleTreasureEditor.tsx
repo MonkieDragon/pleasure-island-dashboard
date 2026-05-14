@@ -38,6 +38,7 @@ type Props = {
   onSetImage: (input: { treasureId: string; file: File }) => Promise<void> | void;
   onRemoveImage: (input: { treasureId: string }) => Promise<void> | void;
   getImageUrl: (path: string) => string;
+  compactMobile?: boolean;
 };
 
 function parseOptionalNumber(input: string): number | null {
@@ -72,6 +73,7 @@ export default function SingleTreasureEditor({
   onSetImage,
   onRemoveImage,
   getImageUrl,
+  compactMobile = false,
 }: Props) {
   const [draftById, setDraftById] = useState<Record<string, Draft>>({});
   const [error, setError] = useState<string | null>(null);
@@ -171,6 +173,19 @@ export default function SingleTreasureEditor({
 
   const imagePath = treasure.image_path || null;
 
+  const mobileInputProps = compactMobile
+    ? ({ inputProps: { style: { fontSize: 16 } } } as const)
+    : {};
+
+  const scrollFieldIntoView = (el: EventTarget | null) => {
+    if (!compactMobile) return;
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+    }
+  };
+
   return (
     <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
       <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -178,7 +193,7 @@ export default function SingleTreasureEditor({
       </Typography>
       <Divider />
 
-      <Stack spacing={2}>
+      <Stack spacing={2} onFocusCapture={(e) => scrollFieldIntoView(e.target)}>
         <Typography variant="subtitle2" color="text.secondary">
           Assignment (read-only)
         </Typography>
@@ -219,6 +234,7 @@ export default function SingleTreasureEditor({
           multiline
           minRows={4}
           size="small"
+          {...mobileInputProps}
         />
 
         <TextField
@@ -228,6 +244,7 @@ export default function SingleTreasureEditor({
           multiline
           minRows={3}
           size="small"
+          {...mobileInputProps}
         />
 
         <Box>
@@ -303,6 +320,7 @@ export default function SingleTreasureEditor({
                 size="small"
                 fullWidth
                 inputMode="decimal"
+                {...mobileInputProps}
               />
               <TextField
                 label="Longitude"
@@ -311,6 +329,7 @@ export default function SingleTreasureEditor({
                 size="small"
                 fullWidth
                 inputMode="decimal"
+                {...mobileInputProps}
               />
             </Box>
 

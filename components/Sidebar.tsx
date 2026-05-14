@@ -1,4 +1,5 @@
 import { formatSupabaseError } from "@/lib/supabaseError";
+import { puzzleStepTypeLabel } from "@/lib/stepLabels";
 import {
   PuzzleChain,
   PuzzleStep,
@@ -9,10 +10,11 @@ import type { MapHover } from "@/types/mapUi";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import LockIcon from "@mui/icons-material/Lock";
+import ZoomInMapIcon from "@mui/icons-material/ZoomInMap";
 import {
+  Avatar,
   Box,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -23,9 +25,13 @@ import {
   ListItemButton,
   ListItemText,
   Paper,
+  Tab,
+  Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
+import type { ReactNode } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -54,8 +60,7 @@ type Props = {
   selectedChainId: string | null;
   selectedStepId: string | null;
   selectedTreasureId: string | null;
-  placementStepId: string | null;
-  onStartStepPlacement: (stepId: string) => void;
+  onZoomStepSpotlight: (lat: number, lng: number) => void;
   onHoverChange: (next: MapHover | null) => void;
   onBack: () => void;
   onSelectRegion: (id: string) => void;
@@ -100,34 +105,69 @@ type Props = {
   onRemoveChainImage: (input: { chainId: string }) => Promise<void> | void;
   getImageUrl: (path: string) => string;
   onSignOut?: () => void;
+  /** When true, sidebar fills horizontal space (mobile list tab). */
+  fullWidth?: boolean;
+  /** When false, hide "Add region" (non-admin editors). */
+  canCreateRegions?: boolean;
+  /** Desktop admin: switch between game browser and admin panel. */
+  sidebarSection?: "game" | "admin";
+  onSidebarSectionChange?: (section: "game" | "admin") => void;
+  adminContent?: ReactNode;
 };
+
+function stepContentPreview(content: string | null): string {
+  const t = content?.replace(/\s+/g, " ").trim();
+  return t ?? "";
+}
+
+/** Same validity as map trail points: finite lat/lng, not (0,0). */
+function hasValidMapCoords(s: PuzzleStep): boolean {
+  const lat = s.latitude;
+  const lng = s.longitude;
+  if (lat == null || lng == null) return false;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return !(lat === 0 && lng === 0);
+}
+
+/** Walk backward from index for first step with valid map coordinates. */
+function resolveTrailZoomCoords(
+  orderedSteps: PuzzleStep[],
+  index: number,
+): [number, number] | null {
+  for (let i = index; i >= 0; i--) {
+    const s = orderedSteps[i];
+    if (!hasValidMapCoords(s)) continue;
+    return [s.latitude as number, s.longitude as number];
+  }
+  return null;
+}
 
 function SortableStepRow({
   id,
   stepNumber,
   stepType,
   stepContent,
-  hasCoords,
   locked,
-  placing,
   selected,
+  zoomDisabled,
+  zoomTooltip,
+  onZoomMap,
   onSelect,
   onHoverIn,
   onHoverOut,
-  onStartPlacement,
 }: {
   id: string;
   stepNumber: number;
   stepType: string;
   stepContent: string | null;
-  hasCoords: boolean;
   locked: boolean;
-  placing: boolean;
   selected: boolean;
+  zoomDisabled: boolean;
+  zoomTooltip: string;
+  onZoomMap: () => void;
   onSelect: () => void;
   onHoverIn: () => void;
   onHoverOut: () => void;
-  onStartPlacement: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id, disabled: locked });
@@ -146,17 +186,21 @@ function SortableStepRow({
         onMouseEnter={onHoverIn}
         onMouseLeave={onHoverOut}
         sx={{
-          mb: 0.5,
-          borderRadius: 1,
-          border: "1px solid",
-          borderColor: "divider",
+          mb: 0.25,
+          py: 1,
+          borderRadius: 2,
           userSelect: "none",
           display: "flex",
           alignItems: "flex-start",
           gap: 1,
-          pr: 1,
+          px: 0.75,
+          pr: 0.5,
           minWidth: 0,
           overflowX: "hidden",
+          bgcolor: selected ? "action.selected" : "transparent",
+          "&:hover": {
+            bgcolor: selected ? "action.selected" : "action.hover",
+          },
         }}
       >
         <IconButton
@@ -167,7 +211,7 @@ function SortableStepRow({
           {...(locked ? {} : listeners)}
           disabled={locked}
           sx={{
-            mt: 0.25,
+            mt: 0.125,
             cursor: locked ? "default" : "grab",
             touchAction: locked ? "auto" : "none",
           }}
@@ -178,27 +222,46 @@ function SortableStepRow({
           {locked ? <LockIcon fontSize="small" /> : <DragIndicatorIcon fontSize="small" />}
         </IconButton>
 
+        <Avatar
+          sx={{
+            width: 28,
+            height: 28,
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            mt: 0.125,
+            bgcolor: selected ? "primary.main" : "action.hover",
+            color: selected ? "primary.contrastText" : "text.secondary",
+          }}
+        >
+          {stepNumber}
+        </Avatar>
+
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }}>
-              {stepNumber}. {stepType}
-            </Typography>
-            {!hasCoords && (
-              <Chip
-                size="small"
-                label={placing ? "Placing…" : "Set on map"}
-                color={placing ? "primary" : "default"}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStartPlacement();
-                }}
-              />
-            )}
-          </Box>
+          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }} noWrap>
+            {stepContentPreview(stepContent) || "No content yet"}
+          </Typography>
           <Typography variant="caption" color="text.secondary" noWrap>
-            {stepContent}
+            {puzzleStepTypeLabel(stepType)}
           </Typography>
         </Box>
+
+        <Tooltip title={zoomTooltip}>
+          <span>
+            <IconButton
+              size="small"
+              aria-label="Zoom map to step location"
+              edge="end"
+              disabled={zoomDisabled}
+              sx={{ mt: 0.125 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onZoomMap();
+              }}
+            >
+              <ZoomInMapIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
       </ListItemButton>
     </Box>
   );
@@ -214,8 +277,7 @@ export default function Sidebar({
   selectedChainId,
   selectedStepId,
   selectedTreasureId,
-  placementStepId,
-  onStartStepPlacement,
+  onZoomStepSpotlight,
   onHoverChange,
   onBack,
   onSelectRegion,
@@ -244,6 +306,11 @@ export default function Sidebar({
   onRemoveChainImage,
   getImageUrl,
   onSignOut,
+  fullWidth = false,
+  canCreateRegions = true,
+  sidebarSection = "game",
+  onSidebarSectionChange,
+  adminContent,
 }: Props) {
   const selectedRegion = selectedRegionId
     ? regions.find((r) => r.id === selectedRegionId) || null
@@ -603,8 +670,8 @@ export default function Sidebar({
     <Paper
       elevation={0}
       sx={{
-        width: 320,
-        borderRight: (t) => `1px solid ${t.palette.divider}`,
+        width: fullWidth ? "100%" : 320,
+        borderRight: fullWidth ? "none" : (t) => `1px solid ${t.palette.divider}`,
         height: "100%",
         display: "flex",
         flexDirection: "column",
@@ -638,6 +705,27 @@ export default function Sidebar({
       </Box>
       <Divider />
 
+      {adminContent ? (
+        <>
+          <Tabs
+            value={sidebarSection}
+            onChange={(_, v) =>
+              onSidebarSectionChange?.(v as "game" | "admin")
+            }
+            variant="fullWidth"
+            sx={{ borderBottom: 1, borderColor: "divider", flexShrink: 0 }}
+          >
+            <Tab label="Game" value="game" />
+            <Tab label="Admin" value="admin" />
+          </Tabs>
+          <Divider />
+        </>
+      ) : null}
+
+      {adminContent && sidebarSection === "admin" ? (
+        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>{adminContent}</Box>
+      ) : (
+        <>
       {!selectedRegionId && (
         <>
           <List dense sx={{ p: 1, overflow: "auto", flex: 1 }}>
@@ -673,6 +761,7 @@ export default function Sidebar({
               </ListItemButton>
             ))}
           </List>
+          {canCreateRegions ? (
           <Box sx={{ p: 1, borderTop: 1, borderColor: "divider" }}>
             <Button
               fullWidth
@@ -685,6 +774,7 @@ export default function Sidebar({
               Add region
             </Button>
           </Box>
+          ) : null}
         </>
       )}
 
@@ -936,7 +1026,16 @@ export default function Sidebar({
                 strategy={verticalListSortingStrategy}
               >
                 <List dense sx={{ pb: 1 }}>
-                  {draftSteps.map((s, idx) => (
+                  {draftSteps.map((s, idx) => {
+                    const target = resolveTrailZoomCoords(draftSteps, idx);
+                    const hasOwn = hasValidMapCoords(s);
+                    const zoomDisabled = !target;
+                    const zoomTooltip = !target
+                      ? "No location on trail"
+                      : hasOwn
+                        ? "Zoom to this step"
+                        : "No marker — zooming to previous step on the trail";
+                    return (
                     <SortableStepRow
                       key={s.id}
                       id={s.id}
@@ -944,15 +1043,19 @@ export default function Sidebar({
                       stepNumber={idx + 1}
                       stepType={s.type}
                       stepContent={s.content}
-                      hasCoords={s.latitude != null && s.longitude != null}
                       locked={pinnedInfoStepId === s.id}
-                      placing={placementStepId === s.id}
+                      zoomDisabled={zoomDisabled}
+                      zoomTooltip={zoomTooltip}
+                      onZoomMap={() => {
+                        if (!target) return;
+                        onZoomStepSpotlight(target[0], target[1]);
+                      }}
                       onSelect={() => onSelectStep(s.id)}
                       onHoverIn={() => onHoverChange({ kind: "step", id: s.id })}
                       onHoverOut={() => onHoverChange(null)}
-                      onStartPlacement={() => onStartStepPlacement(s.id)}
                     />
-                  ))}
+                    );
+                  })}
                 </List>
               </SortableContext>
             </DndContext>
@@ -1015,6 +1118,8 @@ export default function Sidebar({
             </Box>
           </Box>
         </Box>
+      )}
+        </>
       )}
 
       <Dialog

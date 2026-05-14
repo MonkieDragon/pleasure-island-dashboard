@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { formatSupabaseError } from "@/lib/supabaseError";
-import type { PostgrestError } from "@supabase/supabase-js";
 
 import { PuzzleChain, PuzzleStep, Region, Treasure } from "@/types/database";
 import type { MapHover } from "@/types/mapUi";
@@ -12,7 +11,10 @@ import type { MapHover } from "@/types/mapUi";
 import Sidebar from "./Sidebar";
 import SingleStepEditor from "./SingleStepEditor";
 import SingleTreasureEditor from "./SingleTreasureEditor";
+import AdminAccessPanel from "./AdminAccessPanel";
 import dynamic from "next/dynamic";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import {
   Box,
   Button,
@@ -21,22 +23,43 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   Paper,
+  Tab,
+  Tabs,
+  Toolbar,
   Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import useMediaQuery from "@mui/material/useMediaQuery";
 
 const MapView = dynamic(() => import("./MapView"), {
   ssr: false,
 });
-console.log("DASHBOARD MODULE LOADED");
-console.log("SUPABASE URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
-console.log("SUPABASE KEY:", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
-type AccessState = "loading" | "denied" | "staff";
+type AccessState = "loading" | "denied" | "staff" | "no_regions";
+
+type StaffRole = "editor" | "admin";
 
 export default function Dashboard() {
   const router = useRouter();
   const [access, setAccess] = useState<AccessState>("loading");
+  const [staffRole, setStaffRole] = useState<StaffRole | null>(null);
+  /** null = admin (all regions); Set for editors */
+  const [editorRegionIds, setEditorRegionIds] = useState<Set<string> | null>(
+    null,
+  );
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+
+  const [adminProfiles, setAdminProfiles] = useState<
+    { id: string; role: string; email: string | null }[]
+  >([]);
+  const [adminGrants, setAdminGrants] = useState<
+    { user_id: string; region_id: string }[]
+  >([]);
+  const [desktopSidebarSection, setDesktopSidebarSection] = useState<
+    "game" | "admin"
+  >("game");
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +72,7 @@ export default function Dashboard() {
         router.replace("/login");
         return;
       }
+      setSessionUserId(session.user.id);
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
@@ -57,10 +81,33 @@ export default function Dashboard() {
       if (cancelled) return;
       const role = profile?.role;
       if (role !== "editor" && role !== "admin") {
+        setStaffRole(null);
+        setEditorRegionIds(null);
         setAccess("denied");
         return;
       }
-      setAccess("staff");
+      setStaffRole(role);
+      if (role === "admin") {
+        setEditorRegionIds(null);
+        setAccess("staff");
+        return;
+      }
+      const { data: grants, error: grantsErr } = await supabase
+        .from("editor_region_access")
+        .select("region_id")
+        .eq("user_id", session.user.id);
+      if (cancelled) return;
+      if (grantsErr) {
+        setStaffRole(null);
+        setEditorRegionIds(null);
+        setAccess("denied");
+        return;
+      }
+      const ids = new Set(
+        (grants || []).map((g) => g.region_id).filter(Boolean) as string[],
+      );
+      setEditorRegionIds(ids);
+      setAccess(ids.size === 0 ? "no_regions" : "staff");
     }
 
     void supabase.auth.getSession().then(({ data: { session } }) => {
@@ -80,6 +127,7 @@ export default function Dashboard() {
   }, [router]);
 
   const accessOk = access === "staff";
+  const isAdmin = staffRole === "admin";
 
   type Placement =
     | null
@@ -102,6 +150,64 @@ export default function Dashboard() {
     null,
   );
 
+  const visibleRegions = useMemo(() => {
+    if (!accessOk) return [];
+    if (isAdmin || editorRegionIds === null) return regions;
+    return regions.filter((r) => editorRegionIds.has(r.id));
+  }, [accessOk, isAdmin, editorRegionIds, regions]);
+
+  const visibleChains = useMemo(() => {
+    if (!accessOk) return [];
+    if (isAdmin || editorRegionIds === null) return chains;
+    return chains.filter(
+      (c) => c.region_id != null && editorRegionIds.has(c.region_id),
+    );
+  }, [accessOk, isAdmin, editorRegionIds, chains]);
+
+  const reloadAdminData = useCallback(async () => {
+    const [pr, gr] = await Promise.all([
+      supabase.from("profiles").select("id, role, email").order("email"),
+      supabase.from("editor_region_access").select("user_id, region_id"),
+    ]);
+    if (pr.error) throw new Error(formatSupabaseError(pr.error));
+    if (gr.error) throw new Error(formatSupabaseError(gr.error));
+    setAdminProfiles((pr.data || []) as { id: string; role: string; email: string | null }[]);
+    setAdminGrants(
+      (gr.data || []) as { user_id: string; region_id: string }[],
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!accessOk || !isAdmin) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await reloadAdminData();
+      } catch {
+        if (!cancelled) {
+          setAdminProfiles([]);
+          setAdminGrants([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessOk, isAdmin, reloadAdminData]);
+
+  useEffect(() => {
+    if (!accessOk || isAdmin || !selectedRegionId) return;
+    if (!visibleRegions.some((r) => r.id === selectedRegionId)) {
+      setSelectedRegionId(null);
+      setSelectedChainId(null);
+      setSelectedStepId(null);
+      setSelectedTreasureId(null);
+      setSteps([]);
+      setRegionSteps([]);
+      setTreasures([]);
+    }
+  }, [accessOk, isAdmin, selectedRegionId, visibleRegions]);
+
   const [stepOrderDraft, setStepOrderDraft] = useState<{
     chainId: string;
     orderedStepIds: string[];
@@ -119,9 +225,21 @@ export default function Dashboard() {
   const [mapHover, setMapHover] = useState<MapHover | null>(null);
   const [placement, setPlacement] = useState<Placement>(null);
   const [mapFocusToken, setMapFocusToken] = useState(0);
+  const [stepSpotlightToken, setStepSpotlightToken] = useState(0);
+  const [stepSpotlightCenter, setStepSpotlightCenter] = useState<
+    [number, number] | null
+  >(null);
   const [stepsLoadedForChainId, setStepsLoadedForChainId] = useState<
     string | null
   >(null);
+
+  /** In-memory steps per chain — revisit without refetch until this session mutates. */
+  const stepsCacheRef = useRef<Record<string, PuzzleStep[]>>({});
+
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const [mobileLowerTab, setMobileLowerTab] = useState(0);
+  const [keyboardInsetPx, setKeyboardInsetPx] = useState(0);
 
   const [newChainDraft, setNewChainDraft] = useState<{
     title: string;
@@ -149,6 +267,24 @@ export default function Dashboard() {
       stepOrderDraft.orderedStepIds.length > 0
     );
   }, [isStepOrderDirty, stepOrderDraft]);
+
+  const regionChainIdsKey = useMemo(() => {
+    if (!selectedRegionId) return "";
+    return visibleChains
+      .filter((c) => c.region_id === selectedRegionId)
+      .map((c) => c.id)
+      .sort()
+      .join(",");
+  }, [visibleChains, selectedRegionId]);
+
+  const orderedStepIdsForNav = useMemo(
+    () => [...steps].sort((a, b) => a.order_index - b.order_index).map((s) => s.id),
+    [steps],
+  );
+  const stepNavIndex =
+    selectedStepId && !selectedTreasureId
+      ? orderedStepIdsForNav.indexOf(selectedStepId)
+      : -1;
 
   // This is a client component; render the map immediately.
 
@@ -182,7 +318,7 @@ export default function Dashboard() {
   }, [accessOk]);
 
   // ----------------------------
-  // LOAD STEPS (when chain changes)
+  // LOAD STEPS (when chain changes; reuse in-memory cache when revisiting)
   // ----------------------------
   useEffect(() => {
     if (!accessOk) return;
@@ -194,14 +330,18 @@ export default function Dashboard() {
       return;
     }
 
+    const cached = stepsCacheRef.current[selectedChainId];
+    if (cached) {
+      queueMicrotask(() => {
+        setSteps(cached);
+        setStepsLoadedForChainId(selectedChainId);
+      });
+      return;
+    }
+
     queueMicrotask(() => {
       setStepsLoadedForChainId(null);
     });
-
-    // #region agent log
-    fetch('http://127.0.0.1:7442/ingest/f0352e41-ced3-412d-9b60-e73645ea4888',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'790358'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H2_reload_overwrites',location:'components/Dashboard.tsx:LOAD_STEPS',message:'Loading steps for chain',data:{selectedChainId},timestamp:Date.now()})}).catch(()=>{});
-    fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H2_reload_overwrites',location:'components/Dashboard.tsx:LOAD_STEPS:relay',message:'Loading steps for chain (relay)',data:{selectedChainId},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     supabase
       .from("puzzle_steps")
@@ -209,17 +349,21 @@ export default function Dashboard() {
       .eq("chain_id", selectedChainId)
       .order("order_index", { ascending: true })
       .then(({ data }) => {
-        // #region agent log
-        fetch('http://127.0.0.1:7442/ingest/f0352e41-ced3-412d-9b60-e73645ea4888',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'790358'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H2_reload_overwrites',location:'components/Dashboard.tsx:LOAD_STEPS_DONE',message:'Loaded steps count + first coords',data:{selectedChainId,count:(data||[]).length,first:(data||[])[0]?{id:(data||[])[0].id,order_index:(data||[])[0].order_index,type:(data||[])[0].type,lat:(data||[])[0].latitude,lng:(data||[])[0].longitude}:null},timestamp:Date.now()})}).catch(()=>{});
-        fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H2_reload_overwrites',location:'components/Dashboard.tsx:LOAD_STEPS_DONE:relay',message:'Loaded steps count + first coords (relay)',data:{selectedChainId,count:(data||[]).length,first:(data||[])[0]?{id:(data||[])[0].id,order_index:(data||[])[0].order_index,type:(data||[])[0].type,lat:(data||[])[0].latitude,lng:(data||[])[0].longitude}:null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-        setSteps(data || []);
+        const rows = (data || []) as PuzzleStep[];
+        setSteps(rows);
         setStepsLoadedForChainId(selectedChainId);
+        stepsCacheRef.current[selectedChainId] = rows;
       });
   }, [accessOk, selectedChainId]);
 
+  // Keep cache aligned with current chain steps (mutations update `steps` state).
+  useEffect(() => {
+    if (!selectedChainId || stepsLoadedForChainId !== selectedChainId) return;
+    stepsCacheRef.current[selectedChainId] = steps;
+  }, [selectedChainId, steps, stepsLoadedForChainId]);
+
   // ----------------------------
-  // LOAD REGION STEPS + TREASURES (when region changes)
+  // LOAD REGION STEPS + TREASURES (when region or its chain id set changes)
   // ----------------------------
   useEffect(() => {
     if (!accessOk) return;
@@ -232,9 +376,8 @@ export default function Dashboard() {
         return;
       }
 
-      const regionChainIds = chains
-        .filter((c) => c.region_id === selectedRegionId)
-        .map((c) => c.id);
+      const regionChainIds =
+        regionChainIdsKey === "" ? [] : regionChainIdsKey.split(",").filter(Boolean);
 
       if (regionChainIds.length === 0) {
         queueMicrotask(() => {
@@ -250,7 +393,6 @@ export default function Dashboard() {
         });
       }
 
-      // Treasures are region-scoped.
       const { data: treasureData } = await supabase
         .from("treasures")
         .select("*")
@@ -261,27 +403,14 @@ export default function Dashboard() {
     };
 
     void load();
-  }, [accessOk, selectedRegionId, chains]);
+  }, [accessOk, selectedRegionId, regionChainIdsKey]);
 
   const moveStep = async (id: string, lat: number, lng: number) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7442/ingest/f0352e41-ced3-412d-9b60-e73645ea4888',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'790358'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H1_update_not_persisted',location:'components/Dashboard.tsx:moveStep:entry',message:'Attempt moveStep',data:{id,lat,lng},timestamp:Date.now()})}).catch(()=>{});
-    fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H1_update_not_persisted',location:'components/Dashboard.tsx:moveStep:entry:relay',message:'Attempt moveStep (relay)',data:{id,lat,lng},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
-    const { data: updatedRows, error } = await supabase
+    const { error } = await supabase
       .from("puzzle_steps")
       .update({ latitude: lat, longitude: lng })
-      .eq("id", id)
-      .select("id,latitude,longitude");
-
-    const typedError = error as PostgrestError | null;
-    const returnedFirst = Array.isArray(updatedRows) ? updatedRows[0] ?? null : null;
-
-    // #region agent log
-    fetch('http://127.0.0.1:7442/ingest/f0352e41-ced3-412d-9b60-e73645ea4888',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'790358'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H1_update_not_persisted',location:'components/Dashboard.tsx:moveStep:supabase',message:'Supabase update result',data:{id,hasError:!!typedError,returnedCount:Array.isArray(updatedRows)?updatedRows.length:null,returnedFirst:returnedFirst?{id:returnedFirst.id,lat:returnedFirst.latitude,lng:returnedFirst.longitude}:null,errorMessage:typedError?.message??null,errorCode:typedError?.code??null},timestamp:Date.now()})}).catch(()=>{});
-    fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'790358',runId:'pre-fix',hypothesisId:'H1_update_not_persisted',location:'components/Dashboard.tsx:moveStep:supabase:relay',message:'Supabase update result (relay)',data:{id,hasError:!!typedError,returnedCount:Array.isArray(updatedRows)?updatedRows.length:null,returnedFirst:returnedFirst?{id:returnedFirst.id,lat:returnedFirst.latitude,lng:returnedFirst.longitude}:null,errorMessage:typedError?.message??null,errorCode:typedError?.code??null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+      .eq("id", id);
+    if (error) throw new Error(formatSupabaseError(error));
 
     const movedStep = steps.find((s) => s.id === id) || null;
 
@@ -629,6 +758,38 @@ export default function Dashboard() {
     return () => window.removeEventListener("keydown", onKey);
   }, [placement]);
 
+  useEffect(() => {
+    if (!selectedChainId) {
+      queueMicrotask(() => setMobileLowerTab(0));
+    }
+  }, [selectedChainId]);
+
+  useEffect(() => {
+    if (!isMobile) {
+      queueMicrotask(() => setKeyboardInsetPx(0));
+      return;
+    }
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardInsetPx(overlap > 72 ? overlap : 0);
+    };
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    update();
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!isAdmin && mobileLowerTab >= 2) {
+      setMobileLowerTab(0);
+    }
+  }, [isAdmin, mobileLowerTab]);
+
   const defaultMapLat = 10.3157;
   const defaultMapLng = 123.8854;
 
@@ -640,6 +801,9 @@ export default function Dashboard() {
       .replace(/^-|-$/g, "");
 
   const createRegion = async (input: { name: string; slug?: string }) => {
+    if (!isAdmin) {
+      throw new Error("Only administrators can create new regions.");
+    }
     const slug = (input.slug?.trim() || slugify(input.name)) || "region";
     const { data, error } = await supabase
       .from("regions")
@@ -790,15 +954,233 @@ export default function Dashboard() {
     [newTreasureDraft],
   );
 
-  const selectStep = (id: string) => {
-    setSelectedTreasureId(null);
-    setSelectedStepId(id);
+  const onSelectStepFromUi = useCallback(
+    (id: string) => {
+      setSelectedTreasureId(null);
+      setSelectedStepId(id);
+      if (isMobile) setMobileLowerTab(1);
+    },
+    [isMobile],
+  );
+
+  const onSelectTreasureFromUi = useCallback(
+    (id: string) => {
+      setSelectedStepId(null);
+      setSelectedTreasureId(id);
+      if (isMobile) setMobileLowerTab(1);
+    },
+    [isMobile],
+  );
+
+  const mapInvalidateSizeKey = mobileLowerTab * 50_000 + Math.floor(keyboardInsetPx);
+
+  const handleAdminSaveRole = async (
+    userId: string,
+    role: "player" | "editor" | "admin",
+  ) => {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ role })
+      .eq("id", userId);
+    if (error) throw new Error(formatSupabaseError(error));
+    await reloadAdminData();
   };
 
-  const selectTreasure = (id: string) => {
-    setSelectedStepId(null);
-    setSelectedTreasureId(id);
+  const handleAdminSaveRegions = async (
+    userId: string,
+    regionIds: string[],
+  ) => {
+    const { error: delErr } = await supabase
+      .from("editor_region_access")
+      .delete()
+      .eq("user_id", userId);
+    if (delErr) throw new Error(formatSupabaseError(delErr));
+    if (regionIds.length > 0) {
+      const { error: insErr } = await supabase
+        .from("editor_region_access")
+        .insert(
+          regionIds.map((region_id) => ({ user_id: userId, region_id })),
+        );
+      if (insErr) throw new Error(formatSupabaseError(insErr));
+    }
+    await reloadAdminData();
   };
+
+  const adminPanelEl =
+    isAdmin && sessionUserId ? (
+      <AdminAccessPanel
+        profiles={adminProfiles}
+        regions={regions}
+        grants={adminGrants}
+        currentUserId={sessionUserId}
+        onSaveRole={handleAdminSaveRole}
+        onSaveRegions={handleAdminSaveRegions}
+      />
+    ) : null;
+
+  const renderSidebar = (fullWidth: boolean) => (
+    <Sidebar
+      countryName={selectedCountry}
+      regions={visibleRegions}
+      chains={visibleChains}
+      steps={steps}
+      treasures={treasures}
+      selectedRegionId={selectedRegionId}
+      selectedChainId={selectedChainId}
+      selectedStepId={selectedStepId}
+      selectedTreasureId={selectedTreasureId}
+      onSetChainImage={setChainImage}
+      onRemoveChainImage={removeChainImage}
+      getImageUrl={getImageUrl}
+      onZoomStepSpotlight={(lat, lng) => {
+        setStepSpotlightCenter([lat, lng]);
+        setStepSpotlightToken((n) => n + 1);
+      }}
+      onHoverChange={setMapHover}
+      onBack={() => maybeNavigate({ type: "backOneLevel" })}
+      onSelectRegion={(regionId) => maybeNavigate({ type: "selectRegion", regionId })}
+      onSelectChain={(chainId) => maybeNavigate({ type: "selectChain", chainId })}
+      onSelectStep={onSelectStepFromUi}
+      onSelectTreasure={onSelectTreasureFromUi}
+      onReorderSteps={reorderSteps}
+      onStepsOrderDraftChange={handleStepsOrderDraftChange}
+      onCreateRegion={createRegion}
+      onCreateChain={createChain}
+      onCreateStep={createStep}
+      onZoomToRegion={() => setMapFocusToken((n) => n + 1)}
+      onZoomToChain={() => setMapFocusToken((n) => n + 1)}
+      newChainDraft={newChainDraft}
+      onNewChainDraftChange={setNewChainDraft}
+      newChainPlacementActive={newChainPlacementActive}
+      newTreasureDraft={newTreasureDraft}
+      onNewTreasureDraftChange={setNewTreasureDraft}
+      newTreasurePlacementActive={newTreasurePlacementActive}
+      onStartNewTreasurePlacement={() => {
+        if (!selectedRegionId) return;
+        setPlacement({ kind: "newTreasure", regionId: selectedRegionId });
+      }}
+      onCancelNewTreasurePlacement={() => {
+        setPlacement((p) => (p?.kind === "newTreasure" ? null : p));
+      }}
+      onCreateTreasure={createTreasure}
+      onStartNewChainPlacement={() => {
+        if (!selectedRegionId) return;
+        setPlacement({ kind: "newChain", regionId: selectedRegionId });
+      }}
+      onCancelNewChainPlacement={() => {
+        setPlacement((p) => (p?.kind === "newChain" ? null : p));
+      }}
+      canCreateRegions={isAdmin}
+      sidebarSection={desktopSidebarSection}
+      onSidebarSectionChange={setDesktopSidebarSection}
+      adminContent={fullWidth ? undefined : adminPanelEl}
+      onSignOut={() => {
+        void supabase.auth.signOut().then(() => router.replace("/login"));
+      }}
+      fullWidth={fullWidth}
+    />
+  );
+
+  const renderMapView = (enableUserLocation: boolean) => (
+    <MapView
+      regions={visibleRegions}
+      chains={visibleChains}
+      steps={steps}
+      regionSteps={regionSteps}
+      treasures={treasures}
+      focusToken={mapFocusToken}
+      selectedRegionId={selectedRegionId}
+      selectedChainId={selectedChainId}
+      chainStepsReady={!!selectedChainId && stepsLoadedForChainId === selectedChainId}
+      selectedStepId={selectedStepId}
+      selectedTreasureId={selectedTreasureId}
+      mapHover={mapHover}
+      onHoverChange={setMapHover}
+      placement={placement}
+      onPlacementMapClick={completePlacement}
+      onCancelPlacement={() => setPlacement(null)}
+      onSelectRegion={(regionId) => maybeNavigate({ type: "selectRegion", regionId })}
+      onSelectChain={(chainId) => maybeNavigate({ type: "selectChain", chainId })}
+      onSelectStep={onSelectStepFromUi}
+      onSelectTreasure={onSelectTreasureFromUi}
+      onMoveStep={moveStep}
+      onMoveTreasure={moveTreasure}
+      newChainDraftLatLng={newChainDraftLatLng}
+      newTreasureDraftLatLng={newTreasureDraftLatLng}
+      onSetNewChainDraftLatLng={(lat, lng) => {
+        setNewChainDraft((prev) => ({ ...prev, lat: String(lat), lng: String(lng) }));
+      }}
+      onSetNewTreasureDraftLatLng={(lat, lng) => {
+        setNewTreasureDraft((prev) => ({ ...prev, lat: String(lat), lng: String(lng) }));
+      }}
+      stepSpotlightToken={stepSpotlightToken}
+      stepSpotlightCenter={stepSpotlightCenter}
+      enableUserLocation={enableUserLocation}
+      invalidateSizeKey={mapInvalidateSizeKey}
+    />
+  );
+
+  const renderEditors = (compactMobile: boolean) =>
+    selectedTreasureId ? (
+      <SingleTreasureEditor
+        treasure={treasures.find((x) => x.id === selectedTreasureId) || null}
+        placementTreasureId={placementTreasureId}
+        onStartPlacement={() => {
+          if (selectedTreasureId) {
+            setPlacement({ kind: "treasure", treasureId: selectedTreasureId });
+          }
+        }}
+        onCancelPlacement={() => setPlacement(null)}
+        onUpdate={async (next) => {
+          await updateTreasure(next);
+        }}
+        onSetImage={setTreasureImage}
+        onRemoveImage={removeTreasureImage}
+        getImageUrl={getImageUrl}
+        compactMobile={compactMobile}
+      />
+    ) : (
+      <SingleStepEditor
+        step={selectedStepId ? steps.find((s) => s.id === selectedStepId) || null : null}
+        placementStepId={placementStepId}
+        onStartPlacement={() => {
+          if (selectedStepId) setPlacement({ kind: "step", stepId: selectedStepId });
+        }}
+        onCancelPlacement={() => setPlacement(null)}
+        onUpdate={async (next) => {
+          await updateStep(next);
+        }}
+        onDeleteStep={deleteStep}
+        onSetImage={setStepImage}
+        onRemoveImage={removeStepImage}
+        getImageUrl={getImageUrl}
+        compactMobile={compactMobile}
+      />
+    );
+
+  const navDialog = (
+    <Dialog open={!!pendingNav} onClose={closeNavDialog}>
+      <DialogTitle>Unsaved step order</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary">
+          You have unsaved changes to the step order. Save before navigating away?
+        </Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={closeNavDialog}>Cancel</Button>
+        <Button onClick={discardDraftAndProceed} color="warning">
+          Discard
+        </Button>
+        <Button
+          onClick={saveDraftAndProceed}
+          variant="contained"
+          disabled={!canSaveDraft}
+        >
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
 
   if (access === "loading") {
     return (
@@ -811,6 +1193,30 @@ export default function Dashboard() {
         }}
       >
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (access === "no_regions") {
+    return (
+      <Box sx={{ p: 4, maxWidth: 520 }}>
+        <Typography variant="h6" gutterBottom>
+          No regions assigned
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Your editor account is not allowed to change any region yet. Ask an
+          administrator to assign regions to your account in Admin.
+        </Typography>
+        <Button
+          variant="contained"
+          onClick={() => {
+            void supabase.auth
+              .signOut()
+              .then(() => router.replace("/login"));
+          }}
+        >
+          Back to login
+        </Button>
       </Box>
     );
   }
@@ -840,182 +1246,148 @@ export default function Dashboard() {
   }
 
   return (
-    <Box sx={{ display: "flex", height: "100vh" }}>
-      <Sidebar
-        countryName={selectedCountry}
-        regions={regions}
-        chains={chains}
-        steps={steps}
-        treasures={treasures}
-        selectedRegionId={selectedRegionId}
-        selectedChainId={selectedChainId}
-        selectedStepId={selectedStepId}
-        selectedTreasureId={selectedTreasureId}
-        placementStepId={placementStepId}
-        onSetChainImage={setChainImage}
-        onRemoveChainImage={removeChainImage}
-        getImageUrl={getImageUrl}
-        onStartStepPlacement={(stepId) => {
-          setSelectedTreasureId(null);
-          setSelectedStepId(stepId);
-          setPlacement({ kind: "step", stepId });
-        }}
-        onHoverChange={setMapHover}
-        onBack={() => maybeNavigate({ type: "backOneLevel" })}
-        onSelectRegion={(regionId) =>
-          maybeNavigate({ type: "selectRegion", regionId })
-        }
-        onSelectChain={(chainId) => maybeNavigate({ type: "selectChain", chainId })}
-        onSelectStep={selectStep}
-        onSelectTreasure={selectTreasure}
-        onReorderSteps={reorderSteps}
-        onStepsOrderDraftChange={handleStepsOrderDraftChange}
-        onCreateRegion={createRegion}
-        onCreateChain={createChain}
-        onCreateStep={createStep}
-        onZoomToRegion={() => setMapFocusToken((n) => n + 1)}
-        onZoomToChain={() => setMapFocusToken((n) => n + 1)}
-        newChainDraft={newChainDraft}
-        onNewChainDraftChange={setNewChainDraft}
-        newChainPlacementActive={newChainPlacementActive}
-        newTreasureDraft={newTreasureDraft}
-        onNewTreasureDraftChange={setNewTreasureDraft}
-        newTreasurePlacementActive={newTreasurePlacementActive}
-        onStartNewTreasurePlacement={() => {
-          if (!selectedRegionId) return;
-          setPlacement({ kind: "newTreasure", regionId: selectedRegionId });
-        }}
-        onCancelNewTreasurePlacement={() => {
-          setPlacement((p) => (p?.kind === "newTreasure" ? null : p));
-        }}
-        onCreateTreasure={createTreasure}
-        onStartNewChainPlacement={() => {
-          if (!selectedRegionId) return;
-          setPlacement({ kind: "newChain", regionId: selectedRegionId });
-        }}
-        onCancelNewChainPlacement={() => {
-          setPlacement((p) => (p?.kind === "newChain" ? null : p));
-        }}
-        onSignOut={() => {
-          void supabase.auth.signOut().then(() => router.replace("/login"));
-        }}
-      />
-
-      <Box sx={{ flex: 1, p: 2 }}>
-        <Paper elevation={0} sx={{ height: "100%", overflow: "hidden" }}>
-          <MapView
-            regions={regions}
-            chains={chains}
-            steps={steps}
-            regionSteps={regionSteps}
-            treasures={treasures}
-            focusToken={mapFocusToken}
-            selectedRegionId={selectedRegionId}
-            selectedChainId={selectedChainId}
-            chainStepsReady={
-              !!selectedChainId && stepsLoadedForChainId === selectedChainId
-            }
-            selectedStepId={selectedStepId}
-            selectedTreasureId={selectedTreasureId}
-            mapHover={mapHover}
-            onHoverChange={setMapHover}
-            placement={placement}
-            onPlacementMapClick={completePlacement}
-            onCancelPlacement={() => setPlacement(null)}
-            onSelectRegion={(regionId) =>
-              maybeNavigate({ type: "selectRegion", regionId })
-            }
-            onSelectChain={(chainId) =>
-              maybeNavigate({ type: "selectChain", chainId })
-            }
-            onSelectStep={selectStep}
-            onSelectTreasure={selectTreasure}
-            onMoveStep={moveStep}
-            onMoveTreasure={moveTreasure}
-            newChainDraftLatLng={newChainDraftLatLng}
-            newTreasureDraftLatLng={newTreasureDraftLatLng}
-            onSetNewChainDraftLatLng={(lat, lng) => {
-              setNewChainDraft((prev) => ({ ...prev, lat: String(lat), lng: String(lng) }));
+    <>
+      {isMobile ? (
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            height: { xs: "100dvh", sm: "100vh" },
+            minHeight: 0,
+            overflow: "hidden",
+          }}
+        >
+          <Box
+            sx={{
+              flex: "0 0 42vh",
+              minHeight: 260,
+              maxHeight: "50vh",
+              p: 1,
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
             }}
-            onSetNewTreasureDraftLatLng={(lat, lng) => {
-              setNewTreasureDraft((prev) => ({ ...prev, lat: String(lat), lng: String(lng) }));
-            }}
-          />
-        </Paper>
-      </Box>
-
-      <Box
-        sx={{
-          width: 380,
-          borderLeft: (t) => `1px solid ${t.palette.divider}`,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {selectedTreasureId ? (
-          <SingleTreasureEditor
-            treasure={
-              treasures.find((x) => x.id === selectedTreasureId) || null
-            }
-            placementTreasureId={placementTreasureId}
-            onStartPlacement={() => {
-              if (selectedTreasureId) {
-                setPlacement({ kind: "treasure", treasureId: selectedTreasureId });
-              }
-            }}
-            onCancelPlacement={() => setPlacement(null)}
-            onUpdate={async (next) => {
-              await updateTreasure(next);
-            }}
-            onSetImage={setTreasureImage}
-            onRemoveImage={removeTreasureImage}
-            getImageUrl={getImageUrl}
-          />
-        ) : (
-          <SingleStepEditor
-            step={
-              selectedStepId
-                ? steps.find((s) => s.id === selectedStepId) || null
-                : null
-            }
-            placementStepId={placementStepId}
-            onStartPlacement={() => {
-              if (selectedStepId)
-                setPlacement({ kind: "step", stepId: selectedStepId });
-            }}
-            onCancelPlacement={() => setPlacement(null)}
-            onUpdate={async (next) => {
-              await updateStep(next);
-            }}
-            onDeleteStep={deleteStep}
-            onSetImage={setStepImage}
-            onRemoveImage={removeStepImage}
-            getImageUrl={getImageUrl}
-          />
-        )}
-      </Box>
-
-      <Dialog open={!!pendingNav} onClose={closeNavDialog}>
-        <DialogTitle>Unsaved step order</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary">
-            You have unsaved changes to the step order. Save before navigating away?
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeNavDialog}>Cancel</Button>
-          <Button onClick={discardDraftAndProceed} color="warning">
-            Discard
-          </Button>
-          <Button
-            onClick={saveDraftAndProceed}
-            variant="contained"
-            disabled={!canSaveDraft}
           >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+            <Paper elevation={0} sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+              {renderMapView(true)}
+            </Paper>
+          </Box>
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              borderTop: (t) => `1px solid ${t.palette.divider}`,
+            }}
+          >
+            <Tabs
+              value={mobileLowerTab}
+              onChange={(_, v) => {
+                const n = v as number;
+                if (!isAdmin && n >= 2) return;
+                setMobileLowerTab(n);
+              }}
+              variant="fullWidth"
+            >
+              <Tab label="List" />
+              <Tab label="Edit" />
+              {isAdmin ? <Tab label="Admin" /> : null}
+            </Tabs>
+            <Box
+              sx={{
+                flex: 1,
+                minHeight: 0,
+                overflow: "auto",
+                pb: `${keyboardInsetPx}px`,
+              }}
+            >
+              {mobileLowerTab === 0 ? (
+                renderSidebar(true)
+              ) : mobileLowerTab === 2 && isAdmin ? (
+                adminPanelEl
+              ) : (
+                <>
+                  {selectedStepId &&
+                    !selectedTreasureId &&
+                    orderedStepIdsForNav.length > 0 && (
+                      <Toolbar
+                        variant="dense"
+                        sx={{
+                          gap: 1,
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          borderBottom: (t) => `1px solid ${t.palette.divider}`,
+                        }}
+                      >
+                        <IconButton
+                          size="small"
+                          aria-label="Previous step"
+                          disabled={stepNavIndex <= 0}
+                          onClick={() => {
+                            if (stepNavIndex <= 0) return;
+                            const prevId = orderedStepIdsForNav[stepNavIndex - 1];
+                            if (prevId) setSelectedStepId(prevId);
+                          }}
+                        >
+                          <ChevronLeftIcon />
+                        </IconButton>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ flex: 1, textAlign: "center" }}
+                        >
+                          {stepNavIndex >= 0
+                            ? `Step ${stepNavIndex + 1} of ${orderedStepIdsForNav.length}`
+                            : "—"}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          aria-label="Next step"
+                          disabled={
+                            stepNavIndex < 0 ||
+                            stepNavIndex >= orderedStepIdsForNav.length - 1
+                          }
+                          onClick={() => {
+                            if (stepNavIndex < 0) return;
+                            if (stepNavIndex >= orderedStepIdsForNav.length - 1) return;
+                            const nextId = orderedStepIdsForNav[stepNavIndex + 1];
+                            if (nextId) setSelectedStepId(nextId);
+                          }}
+                        >
+                          <ChevronRightIcon />
+                        </IconButton>
+                      </Toolbar>
+                    )}
+                  {renderEditors(true)}
+                </>
+              )}
+            </Box>
+          </Box>
+        </Box>
+      ) : (
+        <Box sx={{ display: "flex", height: "100vh", minHeight: 0 }}>
+          {renderSidebar(false)}
+          <Box sx={{ flex: 1, p: 2, minWidth: 0 }}>
+            <Paper elevation={0} sx={{ height: "100%", overflow: "hidden" }}>
+              {renderMapView(false)}
+            </Paper>
+          </Box>
+          <Box
+            sx={{
+              width: 380,
+              flexShrink: 0,
+              borderLeft: (t) => `1px solid ${t.palette.divider}`,
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+            }}
+          >
+            {renderEditors(false)}
+          </Box>
+        </Box>
+      )}
+      {navDialog}
+    </>
   );
 }

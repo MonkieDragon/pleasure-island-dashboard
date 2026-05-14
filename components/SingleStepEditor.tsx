@@ -41,6 +41,8 @@ type Props = {
   onSetImage: (input: { stepId: string; file: File }) => Promise<void> | void;
   onRemoveImage: (input: { stepId: string }) => Promise<void> | void;
   getImageUrl: (path: string) => string;
+  /** Larger inputs + scroll focused field into view (mobile editor panel). */
+  compactMobile?: boolean;
 };
 
 function toLines(input: string): string[] {
@@ -89,6 +91,7 @@ export default function SingleStepEditor({
   onSetImage,
   onRemoveImage,
   getImageUrl,
+  compactMobile = false,
 }: Props) {
   const [draftByStepId, setDraftByStepId] = useState<Record<string, Draft>>({});
   const [answerError, setAnswerError] = useState<string | null>(null);
@@ -130,8 +133,10 @@ export default function SingleStepEditor({
   }, [step]);
 
   useEffect(() => {
-    setAnswerError(null);
-    setMapError(null);
+    queueMicrotask(() => {
+      setAnswerError(null);
+      setMapError(null);
+    });
   }, [step?.id]);
 
   const dirty = useMemo(() => {
@@ -228,6 +233,19 @@ export default function SingleStepEditor({
   const showAnswerRow =
     isQuestion || draft.type === "multiple_choice" || draft.type === "qr";
 
+  const mobileInputProps = compactMobile
+    ? ({ inputProps: { style: { fontSize: 16 } } } as const)
+    : {};
+
+  const scrollFieldIntoView = (el: EventTarget | null) => {
+    if (!compactMobile) return;
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+    }
+  };
+
   return (
     <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
       <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -235,7 +253,10 @@ export default function SingleStepEditor({
       </Typography>
       <Divider />
 
-      <Stack spacing={2}>
+      <Stack
+        spacing={2}
+        onFocusCapture={(e) => scrollFieldIntoView(e.target)}
+      >
         <FormControl size="small">
           <InputLabel id="step-type-label">Type</InputLabel>
           <Select
@@ -262,6 +283,7 @@ export default function SingleStepEditor({
           multiline
           minRows={4}
           size="small"
+          {...mobileInputProps}
         />
 
         {showAnswerRow && (
@@ -288,6 +310,7 @@ export default function SingleStepEditor({
                 size="small"
                 fullWidth
                 sx={{ flex: 1 }}
+                {...mobileInputProps}
                 error={
                   !!answerError &&
                   (isQuestion || draft.type === "qr" || draft.type === "multiple_choice")
@@ -325,6 +348,7 @@ export default function SingleStepEditor({
             multiline
             minRows={4}
             size="small"
+            {...mobileInputProps}
           />
         )}
 
@@ -336,6 +360,7 @@ export default function SingleStepEditor({
           minRows={3}
           size="small"
           placeholder="e.g. QR is on blue door"
+          {...mobileInputProps}
         />
 
         <Box>
@@ -411,6 +436,7 @@ export default function SingleStepEditor({
                 size="small"
                 fullWidth
                 inputMode="decimal"
+                {...mobileInputProps}
               />
               <TextField
                 label="Longitude"
@@ -419,6 +445,7 @@ export default function SingleStepEditor({
                 size="small"
                 fullWidth
                 inputMode="decimal"
+                {...mobileInputProps}
               />
             </Box>
 

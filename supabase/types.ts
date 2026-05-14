@@ -42,20 +42,56 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string
+          email: string | null
           id: string
           role: string
         }
         Insert: {
           created_at?: string
+          email?: string | null
           id: string
           role?: string
         }
         Update: {
           created_at?: string
+          email?: string | null
           id?: string
           role?: string
         }
         Relationships: []
+      }
+      editor_region_access: {
+        Row: {
+          created_at: string
+          region_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          region_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          region_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "editor_region_access_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "editor_region_access_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       puzzle_chains: {
         Row: {
@@ -242,7 +278,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_staff_edit_region: { Args: { region_id: string | null }; Returns: boolean }
+      is_admin: { Args: never; Returns: boolean }
       is_editor_or_admin: { Args: never; Returns: boolean }
+      puzzle_chain_region_id: { Args: { p_chain_id: string | null }; Returns: string | null }
+      puzzle_step_region_id: { Args: { p_step_id: string | null }; Returns: string | null }
+      storage_object_staff_region: { Args: { object_name: string | null }; Returns: string | null }
     }
     Enums: {
       [_ in never]: never
