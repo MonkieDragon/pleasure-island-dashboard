@@ -115,6 +115,9 @@ type Props = {
   fullWidth?: boolean;
   /** When false, hide "Add region" (non-admin editors). */
   canCreateRegions?: boolean;
+  /** When false, hide delete location (non-staff). */
+  canDeleteChains?: boolean;
+  onDeleteChain: (chainId: string) => Promise<void>;
   /** Desktop admin: switch between game browser and admin panel. */
   sidebarSection?: "game" | "admin";
   onSidebarSectionChange?: (section: "game" | "admin") => void;
@@ -361,6 +364,8 @@ export default function Sidebar({
   onSignOut,
   fullWidth = false,
   canCreateRegions = true,
+  canDeleteChains = false,
+  onDeleteChain,
   sidebarSection = "game",
   onSidebarSectionChange,
   adminContent,
@@ -400,6 +405,7 @@ export default function Sidebar({
   const [isDirty, setIsDirty] = useState(false);
 
   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
+  const [deleteChainDialogOpen, setDeleteChainDialogOpen] = useState(false);
   const [regionName, setRegionName] = useState("");
   const [regionSlug, setRegionSlug] = useState("");
   const chainTitle = newChainDraft.title;
@@ -604,6 +610,20 @@ export default function Sidebar({
       const msg = formatSupabaseError(e);
       console.error("Failed to create step:", msg);
       setCreateError(msg);
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const confirmDeleteChain = async () => {
+    if (!selectedChainId) return;
+    setCreateError(null);
+    setCreateBusy(true);
+    try {
+      await onDeleteChain(selectedChainId);
+      setDeleteChainDialogOpen(false);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
     } finally {
       setCreateBusy(false);
     }
@@ -1205,11 +1225,61 @@ export default function Sidebar({
                 Discard
               </Button>
             </Box>
+            {canDeleteChains ? (
+              <Button
+                fullWidth
+                variant="outlined"
+                color="error"
+                disabled={createBusy}
+                sx={{ mt: 1 }}
+                onClick={() => {
+                  setCreateError(null);
+                  setDeleteChainDialogOpen(true);
+                }}
+              >
+                Delete chain
+              </Button>
+            ) : null}
           </Box>
         </Box>
       )}
         </>
       )}
+
+      <Dialog
+        open={deleteChainDialogOpen}
+        onClose={() => !createBusy && setDeleteChainDialogOpen(false)}
+      >
+        <DialogTitle>Delete location</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {selectedChain
+              ? `Are you SURE you want to delete location ${selectedChain.title} and its ${sortedSteps.length} ${sortedSteps.length === 1 ? "step" : "steps"}?`
+              : "Are you SURE you want to delete this location?"}
+          </Typography>
+          {createError && deleteChainDialogOpen ? (
+            <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+              {createError}
+            </Typography>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setDeleteChainDialogOpen(false)}
+            disabled={createBusy}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={confirmDeleteChain}
+            disabled={createBusy || !selectedChainId}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={regionDialogOpen}

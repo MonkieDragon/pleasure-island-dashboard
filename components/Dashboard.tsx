@@ -898,6 +898,39 @@ export default function Dashboard() {
     );
   };
 
+  const deleteChain = async (chainId: string) => {
+    const chain = chains.find((c) => c.id === chainId) || null;
+    if (!chain) return;
+
+    if (chain.image_path) {
+      await supabase.storage.from("images").remove([chain.image_path]);
+    }
+
+    const { error } = await supabase
+      .from("puzzle_chains")
+      .delete()
+      .eq("id", chainId);
+    if (error) throw new Error(formatSupabaseError(error));
+
+    delete stepsCacheRef.current[chainId];
+
+    setChains((prev) => prev.filter((c) => c.id !== chainId));
+    setRegionSteps((prev) => prev.filter((s) => s.chain_id !== chainId));
+    setStepOrderDraft((prev) => (prev?.chainId === chainId ? null : prev));
+    setPlacement((p) => {
+      if (!p) return p;
+      if (p.kind === "step") {
+        const step = steps.find((s) => s.id === p.stepId);
+        if (step?.chain_id === chainId) return null;
+      }
+      return p;
+    });
+    setSelectedChainId(null);
+    setSelectedStepId(null);
+    setSteps([]);
+    setStepsLoadedForChainId(null);
+  };
+
   const createStep = async (input: { chainId: string }) => {
     const maxOrder = steps.reduce((m, s) => Math.max(m, s.order_index), -1);
     const order_index = maxOrder + 1;
@@ -1101,6 +1134,8 @@ export default function Dashboard() {
         setPlacement((p) => (p?.kind === "newChain" ? null : p));
       }}
       canCreateRegions={isAdmin}
+      canDeleteChains={accessOk}
+      onDeleteChain={deleteChain}
       sidebarSection={desktopSidebarSection}
       onSidebarSectionChange={setDesktopSidebarSection}
       adminContent={fullWidth ? undefined : adminPanelEl}
