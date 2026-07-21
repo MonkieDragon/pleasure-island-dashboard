@@ -813,6 +813,7 @@ export default function Dashboard() {
         country: "philippines",
         latitude: defaultMapLat,
         longitude: defaultMapLng,
+        ready_to_publish: false,
       })
       .select()
       .single();
@@ -838,6 +839,7 @@ export default function Dashboard() {
         region_id: input.regionId,
         latitude: input.latitude,
         longitude: input.longitude,
+        ready_to_publish: false,
       })
       .select()
       .single();
@@ -868,6 +870,32 @@ export default function Dashboard() {
 
     const row = stepData as PuzzleStep;
     setRegionSteps((prev) => [...prev, row]);
+  };
+
+  const setRegionReadyToPublish = async (regionId: string, ready: boolean) => {
+    const { error } = await supabase
+      .from("regions")
+      .update({ ready_to_publish: ready })
+      .eq("id", regionId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setRegions((prev) =>
+      prev.map((r) =>
+        r.id === regionId ? { ...r, ready_to_publish: ready } : r,
+      ),
+    );
+  };
+
+  const setChainReadyToPublish = async (chainId: string, ready: boolean) => {
+    const { error } = await supabase
+      .from("puzzle_chains")
+      .update({ ready_to_publish: ready })
+      .eq("id", chainId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setChains((prev) =>
+      prev.map((c) =>
+        c.id === chainId ? { ...c, ready_to_publish: ready } : c,
+      ),
+    );
   };
 
   const createStep = async (input: { chainId: string }) => {
@@ -1046,6 +1074,8 @@ export default function Dashboard() {
       onStepsOrderDraftChange={handleStepsOrderDraftChange}
       onCreateRegion={createRegion}
       onCreateChain={createChain}
+      onSetRegionReadyToPublish={setRegionReadyToPublish}
+      onSetChainReadyToPublish={setChainReadyToPublish}
       onCreateStep={createStep}
       onZoomToRegion={() => setMapFocusToken((n) => n + 1)}
       onZoomToChain={() => setMapFocusToken((n) => n + 1)}

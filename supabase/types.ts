@@ -39,27 +39,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      profiles: {
-        Row: {
-          created_at: string
-          email: string | null
-          id: string
-          role: string
-        }
-        Insert: {
-          created_at?: string
-          email?: string | null
-          id: string
-          role?: string
-        }
-        Update: {
-          created_at?: string
-          email?: string | null
-          id?: string
-          role?: string
-        }
-        Relationships: []
-      }
       editor_region_access: {
         Row: {
           created_at: string
@@ -93,6 +72,27 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id: string
+          role?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          role?: string
+        }
+        Relationships: []
+      }
       puzzle_chains: {
         Row: {
           created_at: string | null
@@ -100,6 +100,7 @@ export type Database = {
           image_path: string | null
           latitude: number
           longitude: number
+          ready_to_publish: boolean
           region_id: string | null
           title: string
         }
@@ -109,6 +110,7 @@ export type Database = {
           image_path?: string | null
           latitude: number
           longitude: number
+          ready_to_publish?: boolean
           region_id?: string | null
           title: string
         }
@@ -118,6 +120,7 @@ export type Database = {
           image_path?: string | null
           latitude?: number
           longitude?: number
+          ready_to_publish?: boolean
           region_id?: string | null
           title?: string
         }
@@ -195,6 +198,7 @@ export type Database = {
           latitude: number
           longitude: number
           name: string
+          ready_to_publish: boolean
           slug: string
         }
         Insert: {
@@ -204,6 +208,7 @@ export type Database = {
           latitude: number
           longitude: number
           name: string
+          ready_to_publish?: boolean
           slug: string
         }
         Update: {
@@ -213,6 +218,7 @@ export type Database = {
           latitude?: number
           longitude?: number
           name?: string
+          ready_to_publish?: boolean
           slug?: string
         }
         Relationships: []
@@ -278,12 +284,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      can_staff_edit_region: { Args: { region_id: string | null }; Returns: boolean }
+      can_staff_edit_region: { Args: { region_id: string }; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       is_editor_or_admin: { Args: never; Returns: boolean }
-      puzzle_chain_region_id: { Args: { p_chain_id: string | null }; Returns: string | null }
-      puzzle_step_region_id: { Args: { p_step_id: string | null }; Returns: string | null }
-      storage_object_staff_region: { Args: { object_name: string | null }; Returns: string | null }
+      puzzle_chain_region_id: { Args: { p_chain_id: string }; Returns: string }
+      puzzle_step_region_id: { Args: { p_step_id: string }; Returns: string }
+      storage_object_staff_region: {
+        Args: { object_name: string }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

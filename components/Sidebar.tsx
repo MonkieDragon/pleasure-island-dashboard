@@ -12,19 +12,23 @@ import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import LockIcon from "@mui/icons-material/Lock";
 import ZoomInMapIcon from "@mui/icons-material/ZoomInMap";
 import {
+  Alert,
   Avatar,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   IconButton,
   List,
   ListItemButton,
   ListItemText,
   Paper,
+  Switch,
   Tab,
   Tabs,
   TextField,
@@ -81,6 +85,8 @@ type Props = {
     longitude: number;
   }) => Promise<void>;
   onCreateStep: (input: { chainId: string }) => Promise<void>;
+  onSetRegionReadyToPublish: (id: string, ready: boolean) => Promise<void>;
+  onSetChainReadyToPublish: (id: string, ready: boolean) => Promise<void>;
   onZoomToRegion: () => void;
   onZoomToChain: () => void;
 
@@ -118,6 +124,51 @@ type Props = {
 function stepContentPreview(content: string | null): string {
   const t = content?.replace(/\s+/g, " ").trim();
   return t ?? "";
+}
+
+function ReadyToPublishControl({
+  ready,
+  onChange,
+  disabled,
+}: {
+  ready: boolean;
+  onChange: (ready: boolean) => Promise<void>;
+  disabled?: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Box
+      sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <Chip
+        size="small"
+        label={ready ? "Live" : "Draft"}
+        color={ready ? "success" : "default"}
+        variant={ready ? "filled" : "outlined"}
+      />
+      <FormControlLabel
+        sx={{ m: 0, mr: 0 }}
+        control={
+          <Switch
+            size="small"
+            checked={ready}
+            disabled={disabled || busy}
+            onChange={(_, checked) => {
+              setBusy(true);
+              void onChange(checked).finally(() => setBusy(false));
+            }}
+          />
+        }
+        label={
+          <Typography variant="caption" color="text.secondary" noWrap>
+            Players
+          </Typography>
+        }
+        labelPlacement="start"
+      />
+    </Box>
+  );
 }
 
 /** Same validity as map trail points: finite lat/lng, not (0,0). */
@@ -288,6 +339,8 @@ export default function Sidebar({
   onStepsOrderDraftChange,
   onCreateRegion,
   onCreateChain,
+  onSetRegionReadyToPublish,
+  onSetChainReadyToPublish,
   onCreateStep,
   onZoomToRegion,
   onZoomToChain,
@@ -735,7 +788,10 @@ export default function Sidebar({
                 onClick={() => onSelectRegion(r.id)}
                 onMouseEnter={() => onHoverChange({ kind: "region", id: r.id })}
                 onMouseLeave={() => onHoverChange(null)}
-                sx={{ minWidth: 0 }}
+                sx={{
+                  minWidth: 0,
+                  opacity: r.ready_to_publish ? 1 : 0.72,
+                }}
               >
                 <ListItemText
                   primary={
@@ -757,6 +813,11 @@ export default function Sidebar({
                       {r.slug}
                     </Typography>
                   }
+                  sx={{ minWidth: 0, mr: 1 }}
+                />
+                <ReadyToPublishControl
+                  ready={r.ready_to_publish}
+                  onChange={(ready) => onSetRegionReadyToPublish(r.id, ready)}
                 />
               </ListItemButton>
             ))}
@@ -886,6 +947,12 @@ export default function Sidebar({
               })
             ) : (
               <>
+                {selectedRegion && !selectedRegion.ready_to_publish ? (
+                  <Alert severity="info" sx={{ mx: 1, mb: 1 }}>
+                    This region is not published. Locations inside it are hidden
+                    from players until the region is marked live.
+                  </Alert>
+                ) : null}
                 <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
                   Locations
                 </Typography>
@@ -897,7 +964,13 @@ export default function Sidebar({
                       onClick={() => onSelectChain(c.id)}
                       onMouseEnter={() => onHoverChange({ kind: "chain", id: c.id })}
                       onMouseLeave={() => onHoverChange(null)}
-                      sx={{ minWidth: 0 }}
+                      sx={{
+                        minWidth: 0,
+                        opacity:
+                          c.ready_to_publish && selectedRegion?.ready_to_publish
+                            ? 1
+                            : 0.72,
+                      }}
                     >
                       <ListItemText
                         primary={
@@ -905,6 +978,11 @@ export default function Sidebar({
                             {c.title}
                           </Typography>
                         }
+                        sx={{ minWidth: 0, mr: 1 }}
+                      />
+                      <ReadyToPublishControl
+                        ready={c.ready_to_publish}
+                        onChange={(ready) => onSetChainReadyToPublish(c.id, ready)}
                       />
                     </ListItemButton>
                   ))}
@@ -962,6 +1040,17 @@ export default function Sidebar({
           }}
         >
           <Box sx={{ p: 1, overflowY: "auto", overflowX: "hidden", flex: 1 }}>
+            {selectedRegion && !selectedRegion.ready_to_publish ? (
+              <Alert severity="info" sx={{ mb: 1 }}>
+                This region is not published. This location is hidden from players
+                until the region is marked live.
+              </Alert>
+            ) : selectedChain && !selectedChain.ready_to_publish ? (
+              <Alert severity="info" sx={{ mb: 1 }}>
+                This location is a draft and is hidden from players until marked
+                live.
+              </Alert>
+            ) : null}
             {selectedChain && (
               <Box sx={{ px: 1, mb: 1 }}>
                 {selectedChain.image_path ? (
