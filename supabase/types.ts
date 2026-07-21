@@ -148,6 +148,7 @@ export type Database = {
           multiple_choice_options: string[] | null
           notes: string | null
           order_index: number
+          ready_to_publish: boolean
           type: string
         }
         Insert: {
@@ -163,6 +164,7 @@ export type Database = {
           multiple_choice_options?: string[] | null
           notes?: string | null
           order_index: number
+          ready_to_publish?: boolean
           type: string
         }
         Update: {
@@ -178,6 +180,7 @@ export type Database = {
           multiple_choice_options?: string[] | null
           notes?: string | null
           order_index?: number
+          ready_to_publish?: boolean
           type?: string
         }
         Relationships: [

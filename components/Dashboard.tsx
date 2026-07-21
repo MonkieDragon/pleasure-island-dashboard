@@ -857,6 +857,7 @@ export default function Dashboard() {
         content: "",
         latitude: chain.latitude,
         longitude: chain.longitude,
+        ready_to_publish: false,
       })
       .select()
       .single();
@@ -896,6 +897,52 @@ export default function Dashboard() {
         c.id === chainId ? { ...c, ready_to_publish: ready } : c,
       ),
     );
+
+    // Location is master: going live also marks all existing steps live.
+    if (ready) {
+      const { error: stepsError } = await supabase
+        .from("puzzle_steps")
+        .update({ ready_to_publish: true })
+        .eq("chain_id", chainId);
+      if (stepsError) throw new Error(formatSupabaseError(stepsError));
+
+      const markLive = (prev: PuzzleStep[]) =>
+        prev.map((s) =>
+          s.chain_id === chainId ? { ...s, ready_to_publish: true } : s,
+        );
+      setSteps(markLive);
+      setRegionSteps(markLive);
+      const cached = stepsCacheRef.current[chainId];
+      if (cached) {
+        stepsCacheRef.current[chainId] = cached.map((s) => ({
+          ...s,
+          ready_to_publish: true,
+        }));
+      }
+    }
+  };
+
+  const setStepReadyToPublish = async (stepId: string, ready: boolean) => {
+    const { error } = await supabase
+      .from("puzzle_steps")
+      .update({ ready_to_publish: ready })
+      .eq("id", stepId);
+    if (error) throw new Error(formatSupabaseError(error));
+    const patch = (prev: PuzzleStep[]) =>
+      prev.map((s) =>
+        s.id === stepId ? { ...s, ready_to_publish: ready } : s,
+      );
+    setSteps(patch);
+    setRegionSteps(patch);
+    const step = steps.find((s) => s.id === stepId);
+    if (step) {
+      const cached = stepsCacheRef.current[step.chain_id];
+      if (cached) {
+        stepsCacheRef.current[step.chain_id] = cached.map((s) =>
+          s.id === stepId ? { ...s, ready_to_publish: ready } : s,
+        );
+      }
+    }
   };
 
   const deleteChain = async (chainId: string) => {
@@ -941,6 +988,7 @@ export default function Dashboard() {
         type: "text",
         order_index,
         content: "",
+        ready_to_publish: false,
       })
       .select()
       .single();
@@ -1109,6 +1157,7 @@ export default function Dashboard() {
       onCreateChain={createChain}
       onSetRegionReadyToPublish={setRegionReadyToPublish}
       onSetChainReadyToPublish={setChainReadyToPublish}
+      onSetStepReadyToPublish={setStepReadyToPublish}
       onCreateStep={createStep}
       onZoomToRegion={() => setMapFocusToken((n) => n + 1)}
       onZoomToChain={() => setMapFocusToken((n) => n + 1)}

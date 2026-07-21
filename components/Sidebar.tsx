@@ -22,13 +22,11 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
-  FormControlLabel,
   IconButton,
   List,
   ListItemButton,
   ListItemText,
   Paper,
-  Switch,
   Tab,
   Tabs,
   TextField,
@@ -87,6 +85,7 @@ type Props = {
   onCreateStep: (input: { chainId: string }) => Promise<void>;
   onSetRegionReadyToPublish: (id: string, ready: boolean) => Promise<void>;
   onSetChainReadyToPublish: (id: string, ready: boolean) => Promise<void>;
+  onSetStepReadyToPublish: (id: string, ready: boolean) => Promise<void>;
   onZoomToRegion: () => void;
   onZoomToChain: () => void;
 
@@ -133,43 +132,89 @@ function ReadyToPublishControl({
   ready,
   onChange,
   disabled,
+  entityLabel,
 }: {
   ready: boolean;
   onChange: (ready: boolean) => Promise<void>;
   disabled?: boolean;
+  /** e.g. "region", "location", "step" — used in confirm copy */
+  entityLabel: string;
 }) {
   const [busy, setBusy] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const nextReady = !ready;
+
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      await onChange(nextReady);
+      setConfirmOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Box
-      sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}
+      sx={{ display: "flex", alignItems: "center", flexShrink: 0 }}
       onClick={(e) => e.stopPropagation()}
     >
       <Chip
         size="small"
         label={ready ? "Live" : "Draft"}
-        color={ready ? "success" : "default"}
+        clickable={!disabled && !busy}
+        disabled={disabled || busy}
+        onClick={() => {
+          if (disabled || busy) return;
+          setConfirmOpen(true);
+        }}
+        color="success"
         variant={ready ? "filled" : "outlined"}
-      />
-      <FormControlLabel
-        sx={{ m: 0, mr: 0 }}
-        control={
-          <Switch
-            size="small"
-            checked={ready}
-            disabled={disabled || busy}
-            onChange={(_, checked) => {
-              setBusy(true);
-              void onChange(checked).finally(() => setBusy(false));
-            }}
-          />
+        sx={
+          ready
+            ? undefined
+            : {
+                bgcolor: "#fff",
+                borderColor: "success.main",
+                color: "success.main",
+                "&:hover": {
+                  bgcolor: "rgba(46, 125, 50, 0.04)",
+                  borderColor: "success.dark",
+                },
+              }
         }
-        label={
-          <Typography variant="caption" color="text.secondary" noWrap>
-            Players
+      />
+      <Dialog
+        open={confirmOpen}
+        onClose={() => !busy && setConfirmOpen(false)}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DialogTitle>
+          {nextReady ? `Make ${entityLabel} live?` : `Take ${entityLabel} offline?`}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            {nextReady
+              ? entityLabel === "location"
+                ? "Players will be able to see this location (if its region is live). All existing steps in this location will also be marked live."
+                : `Players will be able to see this ${entityLabel} (subject to parent region/location being live).`
+              : `Players will no longer see this ${entityLabel}.`}
           </Typography>
-        }
-        labelPlacement="start"
-      />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color={nextReady ? "success" : "warning"}
+            onClick={() => void confirm()}
+            disabled={busy}
+          >
+            {nextReady ? "Make live" : "Take offline"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -203,6 +248,8 @@ function SortableStepRow({
   stepContent,
   locked,
   selected,
+  readyToPublish,
+  onSetReadyToPublish,
   zoomDisabled,
   zoomTooltip,
   onZoomMap,
@@ -216,6 +263,8 @@ function SortableStepRow({
   stepContent: string | null;
   locked: boolean;
   selected: boolean;
+  readyToPublish: boolean;
+  onSetReadyToPublish: (ready: boolean) => Promise<void>;
   zoomDisabled: boolean;
   zoomTooltip: string;
   onZoomMap: () => void;
@@ -229,7 +278,7 @@ function SortableStepRow({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.55 : 1,
+    opacity: isDragging ? 0.55 : readyToPublish ? 1 : 0.72,
   } as const;
 
   return (
@@ -299,6 +348,14 @@ function SortableStepRow({
           </Typography>
         </Box>
 
+        <Box sx={{ mt: 0.25 }}>
+          <ReadyToPublishControl
+            ready={readyToPublish}
+            entityLabel="step"
+            onChange={onSetReadyToPublish}
+          />
+        </Box>
+
         <Tooltip title={zoomTooltip}>
           <span>
             <IconButton
@@ -344,6 +401,7 @@ export default function Sidebar({
   onCreateChain,
   onSetRegionReadyToPublish,
   onSetChainReadyToPublish,
+  onSetStepReadyToPublish,
   onCreateStep,
   onZoomToRegion,
   onZoomToChain,
@@ -837,6 +895,7 @@ export default function Sidebar({
                 />
                 <ReadyToPublishControl
                   ready={r.ready_to_publish}
+                  entityLabel="region"
                   onChange={(ready) => onSetRegionReadyToPublish(r.id, ready)}
                 />
               </ListItemButton>
@@ -1002,6 +1061,7 @@ export default function Sidebar({
                       />
                       <ReadyToPublishControl
                         ready={c.ready_to_publish}
+                        entityLabel="location"
                         onChange={(ready) => onSetChainReadyToPublish(c.id, ready)}
                       />
                     </ListItemButton>
@@ -1153,6 +1213,10 @@ export default function Sidebar({
                       stepType={s.type}
                       stepContent={s.content}
                       locked={pinnedInfoStepId === s.id}
+                      readyToPublish={s.ready_to_publish}
+                      onSetReadyToPublish={(ready) =>
+                        onSetStepReadyToPublish(s.id, ready)
+                      }
                       zoomDisabled={zoomDisabled}
                       zoomTooltip={zoomTooltip}
                       onZoomMap={() => {
