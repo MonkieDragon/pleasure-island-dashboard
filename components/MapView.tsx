@@ -17,6 +17,7 @@ import L from "leaflet";
 import MyLocationIcon from "@mui/icons-material/MyLocation";
 import { Alert, Box, Fab, Snackbar, Typography } from "@mui/material";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { pickChainIcon } from "@/lib/chainMapIcons";
 
 const ICON_SIZE: [number, number] = [36, 36];
 const ICON_ANCHOR: [number, number] = [18, 36];
@@ -541,7 +542,13 @@ export default function MapView(props: Props) {
             regionChainsWithCoords.map((c) => {
               const hovered = hoverMatch(mapHover, "chain", c.id);
               const selected = selectedChainId === c.id;
-              const icon = pickStandardIcon(selected, hovered);
+              const icon = pickChainIcon({
+                isEatery: !!c.is_eatery,
+                optional: c.optional !== false,
+                readyToPublish: !!c.ready_to_publish,
+                selected,
+                hovered,
+              });
               return (
                 <Marker
                   key={c.id}

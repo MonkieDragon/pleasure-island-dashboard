@@ -27,13 +27,10 @@ import {
   ListItemButton,
   ListItemText,
   Paper,
-  Tab,
-  Tabs,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
-import type { ReactNode } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -109,7 +106,6 @@ type Props = {
   onSetChainImage: (input: { chainId: string; file: File }) => Promise<void> | void;
   onRemoveChainImage: (input: { chainId: string }) => Promise<void> | void;
   getImageUrl: (path: string) => string;
-  onSignOut?: () => void;
   /** When true, sidebar fills horizontal space (mobile list tab). */
   fullWidth?: boolean;
   /** When false, hide "Add region" (non-admin editors). */
@@ -117,10 +113,10 @@ type Props = {
   /** When false, hide delete location (non-staff). */
   canDeleteChains?: boolean;
   onDeleteChain: (chainId: string) => Promise<void>;
-  /** Desktop admin: switch between game browser and admin panel. */
-  sidebarSection?: "game" | "admin";
-  onSidebarSectionChange?: (section: "game" | "admin") => void;
-  adminContent?: ReactNode;
+  onRenameRegion: (regionId: string, name: string) => Promise<void>;
+  onRenameChain: (chainId: string, title: string) => Promise<void>;
+  onSetChainOptional: (chainId: string, optional: boolean) => Promise<void>;
+  onSetChainIsEatery: (chainId: string, isEatery: boolean) => Promise<void>;
 };
 
 function stepContentPreview(content: string | null): string {
@@ -419,14 +415,14 @@ export default function Sidebar({
   onSetChainImage,
   onRemoveChainImage,
   getImageUrl,
-  onSignOut,
   fullWidth = false,
   canCreateRegions = true,
   canDeleteChains = false,
   onDeleteChain,
-  sidebarSection = "game",
-  onSidebarSectionChange,
-  adminContent,
+  onRenameRegion,
+  onRenameChain,
+  onSetChainOptional,
+  onSetChainIsEatery,
 }: Props) {
   const selectedRegion = selectedRegionId
     ? regions.find((r) => r.id === selectedRegionId) || null
@@ -464,6 +460,9 @@ export default function Sidebar({
 
   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
   const [deleteChainDialogOpen, setDeleteChainDialogOpen] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [flagBusy, setFlagBusy] = useState(false);
   const [regionName, setRegionName] = useState("");
   const [regionSlug, setRegionSlug] = useState("");
   const chainTitle = newChainDraft.title;
@@ -687,6 +686,58 @@ export default function Sidebar({
     }
   };
 
+  const openRenameDialog = () => {
+    const current = selectedChain?.title ?? selectedRegion?.name ?? "";
+    setRenameValue(current);
+    setCreateError(null);
+    setRenameDialogOpen(true);
+  };
+
+  const submitRename = async () => {
+    if (!renameValue.trim()) {
+      setCreateError("Name is required.");
+      return;
+    }
+    setCreateError(null);
+    setCreateBusy(true);
+    try {
+      if (selectedChainId) {
+        await onRenameChain(selectedChainId, renameValue);
+      } else if (selectedRegionId) {
+        await onRenameRegion(selectedRegionId, renameValue);
+      }
+      setRenameDialogOpen(false);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const toggleOptional = async () => {
+    if (!selectedChain) return;
+    setFlagBusy(true);
+    try {
+      await onSetChainOptional(selectedChain.id, !selectedChain.optional);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setFlagBusy(false);
+    }
+  };
+
+  const toggleEatery = async () => {
+    if (!selectedChain) return;
+    setFlagBusy(true);
+    try {
+      await onSetChainIsEatery(selectedChain.id, !selectedChain.is_eatery);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setFlagBusy(false);
+    }
+  };
+
   const treasureBlock = selectedRegionId && !selectedChainId ? (
     <Box sx={{ px: 1, py: 0.5 }}>
       <Typography variant="overline" sx={{ color: "text.secondary" }}>
@@ -809,7 +860,15 @@ export default function Sidebar({
         overflowX: "hidden",
       }}
     >
-      <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 1 }}>
+      <Box
+        sx={{
+          p: 2,
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          flexWrap: "wrap",
+        }}
+      >
         {showBack && (
           <IconButton onClick={onBack} size="small" aria-label="Back">
             <ArrowBackIcon fontSize="small" />
@@ -828,35 +887,41 @@ export default function Sidebar({
         >
           {headerLabel}
         </Typography>
-        {onSignOut ? (
-          <Button size="small" variant="text" onClick={onSignOut}>
-            Sign out
+        {selectedRegionId ? (
+          <Button size="small" variant="outlined" onClick={openRenameDialog}>
+            Rename
           </Button>
+        ) : null}
+        {selectedChain ? (
+          <>
+            <Chip
+              size="small"
+              label={selectedChain.optional !== false ? "Optional" : "Main"}
+              clickable={!flagBusy}
+              disabled={flagBusy}
+              onClick={toggleOptional}
+              color="primary"
+              variant={selectedChain.optional !== false ? "outlined" : "filled"}
+              sx={
+                selectedChain.optional !== false
+                  ? undefined
+                  : { fontWeight: 700 }
+              }
+            />
+            <Chip
+              size="small"
+              label={selectedChain.is_eatery ? "Eatery" : "Attraction"}
+              clickable={!flagBusy}
+              disabled={flagBusy}
+              onClick={toggleEatery}
+              color="default"
+              variant={selectedChain.is_eatery ? "filled" : "outlined"}
+            />
+          </>
         ) : null}
       </Box>
       <Divider />
 
-      {adminContent ? (
-        <>
-          <Tabs
-            value={sidebarSection}
-            onChange={(_, v) =>
-              onSidebarSectionChange?.(v as "game" | "admin")
-            }
-            variant="fullWidth"
-            sx={{ borderBottom: 1, borderColor: "divider", flexShrink: 0 }}
-          >
-            <Tab label="Game" value="game" />
-            <Tab label="Admin" value="admin" />
-          </Tabs>
-          <Divider />
-        </>
-      ) : null}
-
-      {adminContent && sidebarSection === "admin" ? (
-        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>{adminContent}</Box>
-      ) : (
-        <>
       {!selectedRegionId && (
         <>
           <List dense sx={{ p: 1, overflow: "auto", flex: 1 }}>
@@ -1307,8 +1372,45 @@ export default function Sidebar({
           </Box>
         </Box>
       )}
-        </>
-      )}
+
+      <Dialog
+        open={renameDialogOpen}
+        onClose={() => !createBusy && setRenameDialogOpen(false)}
+      >
+        <DialogTitle>
+          {selectedChainId ? "Rename location" : "Rename region"}
+        </DialogTitle>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+          <TextField
+            label="Name"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            fullWidth
+            autoFocus
+            size="small"
+          />
+          {createError && renameDialogOpen ? (
+            <Typography variant="body2" color="error">
+              {createError}
+            </Typography>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setRenameDialogOpen(false)}
+            disabled={createBusy}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={submitRename}
+            disabled={createBusy || !renameValue.trim()}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={deleteChainDialogOpen}

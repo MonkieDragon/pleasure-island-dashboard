@@ -98,8 +98,10 @@ export type Database = {
           created_at: string | null
           id: string
           image_path: string | null
+          is_eatery: boolean
           latitude: number
           longitude: number
+          optional: boolean
           ready_to_publish: boolean
           region_id: string | null
           title: string
@@ -108,8 +110,10 @@ export type Database = {
           created_at?: string | null
           id?: string
           image_path?: string | null
+          is_eatery?: boolean
           latitude: number
           longitude: number
+          optional?: boolean
           ready_to_publish?: boolean
           region_id?: string | null
           title: string
@@ -118,8 +122,10 @@ export type Database = {
           created_at?: string | null
           id?: string
           image_path?: string | null
+          is_eatery?: boolean
           latitude?: number
           longitude?: number
+          optional?: boolean
           ready_to_publish?: boolean
           region_id?: string | null
           title?: string

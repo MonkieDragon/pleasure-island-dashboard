@@ -16,6 +16,7 @@ import dynamic from "next/dynamic";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import {
+  AppBar,
   Box,
   Button,
   CircularProgress,
@@ -785,10 +786,24 @@ export default function Dashboard() {
   }, [isMobile]);
 
   useEffect(() => {
-    if (!isAdmin && mobileLowerTab >= 2) {
-      setMobileLowerTab(0);
+    if (!isAdmin && desktopSidebarSection === "admin") {
+      setDesktopSidebarSection("game");
     }
-  }, [isAdmin, mobileLowerTab]);
+  }, [isAdmin, desktopSidebarSection]);
+
+  useEffect(() => {
+    if (mobileLowerTab > 1) setMobileLowerTab(0);
+  }, [mobileLowerTab]);
+
+  const signOut = () => {
+    void supabase.auth.signOut().then(() => router.replace("/login"));
+  };
+
+  const toggleAdminMode = () => {
+    setDesktopSidebarSection((prev) => (prev === "admin" ? "game" : "admin"));
+  };
+
+  const showAdminPanel = isAdmin && desktopSidebarSection === "admin";
 
   const defaultMapLat = 10.3157;
   const defaultMapLng = 123.8854;
@@ -840,6 +855,8 @@ export default function Dashboard() {
         latitude: input.latitude,
         longitude: input.longitude,
         ready_to_publish: false,
+        optional: true,
+        is_eatery: false,
       })
       .select()
       .single();
@@ -871,6 +888,54 @@ export default function Dashboard() {
 
     const row = stepData as PuzzleStep;
     setRegionSteps((prev) => [...prev, row]);
+  };
+
+  const setChainOptional = async (chainId: string, optional: boolean) => {
+    const { error } = await supabase
+      .from("puzzle_chains")
+      .update({ optional })
+      .eq("id", chainId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setChains((prev) =>
+      prev.map((c) => (c.id === chainId ? { ...c, optional } : c)),
+    );
+  };
+
+  const setChainIsEatery = async (chainId: string, isEatery: boolean) => {
+    const { error } = await supabase
+      .from("puzzle_chains")
+      .update({ is_eatery: isEatery })
+      .eq("id", chainId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setChains((prev) =>
+      prev.map((c) => (c.id === chainId ? { ...c, is_eatery: isEatery } : c)),
+    );
+  };
+
+  const renameRegion = async (regionId: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("Name is required.");
+    const { error } = await supabase
+      .from("regions")
+      .update({ name: trimmed })
+      .eq("id", regionId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setRegions((prev) =>
+      prev.map((r) => (r.id === regionId ? { ...r, name: trimmed } : r)),
+    );
+  };
+
+  const renameChain = async (chainId: string, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) throw new Error("Title is required.");
+    const { error } = await supabase
+      .from("puzzle_chains")
+      .update({ title: trimmed })
+      .eq("id", chainId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setChains((prev) =>
+      prev.map((c) => (c.id === chainId ? { ...c, title: trimmed } : c)),
+    );
   };
 
   const setRegionReadyToPublish = async (regionId: string, ready: boolean) => {
@@ -1185,12 +1250,10 @@ export default function Dashboard() {
       canCreateRegions={isAdmin}
       canDeleteChains={accessOk}
       onDeleteChain={deleteChain}
-      sidebarSection={desktopSidebarSection}
-      onSidebarSectionChange={setDesktopSidebarSection}
-      adminContent={fullWidth ? undefined : adminPanelEl}
-      onSignOut={() => {
-        void supabase.auth.signOut().then(() => router.replace("/login"));
-      }}
+      onRenameRegion={renameRegion}
+      onRenameChain={renameChain}
+      onSetChainOptional={setChainOptional}
+      onSetChainIsEatery={setChainIsEatery}
       fullWidth={fullWidth}
     />
   );
@@ -1361,146 +1424,219 @@ export default function Dashboard() {
 
   return (
     <>
-      {isMobile ? (
-        <Box
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          height: { xs: "100dvh", sm: "100vh" },
+          minHeight: 0,
+          overflow: "hidden",
+        }}
+      >
+        <AppBar
+          position="static"
+          color="default"
+          elevation={0}
           sx={{
-            display: "flex",
-            flexDirection: "column",
-            height: { xs: "100dvh", sm: "100vh" },
-            minHeight: 0,
-            overflow: "hidden",
+            borderBottom: (t) => `1px solid ${t.palette.divider}`,
+            bgcolor: "background.paper",
+            flexShrink: 0,
           }}
         >
-          <Box
-            sx={{
-              flex: "0 0 42vh",
-              minHeight: 260,
-              maxHeight: "50vh",
-              p: 1,
-              boxSizing: "border-box",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <Paper elevation={0} sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-              {renderMapView(true)}
-            </Paper>
-          </Box>
-          <Box
-            sx={{
-              flex: 1,
-              minHeight: 0,
-              display: "flex",
-              flexDirection: "column",
-              borderTop: (t) => `1px solid ${t.palette.divider}`,
-            }}
-          >
-            <Tabs
-              value={mobileLowerTab}
-              onChange={(_, v) => {
-                const n = v as number;
-                if (!isAdmin && n >= 2) return;
-                setMobileLowerTab(n);
-              }}
-              variant="fullWidth"
+          <Toolbar variant="dense" sx={{ gap: 1, minHeight: 56 }}>
+            <Typography
+              variant="h6"
+              sx={{ flex: 1, fontWeight: 700, fontSize: "1.05rem" }}
+              noWrap
             >
-              <Tab label="List" />
-              <Tab label="Edit" />
-              {isAdmin ? <Tab label="Admin" /> : null}
-            </Tabs>
+              Puzzle Dashboard
+            </Typography>
+            {isAdmin ? (
+              <Button
+                size="small"
+                variant={showAdminPanel ? "contained" : "outlined"}
+                onClick={toggleAdminMode}
+              >
+                Admin
+              </Button>
+            ) : null}
+            <Button size="small" variant="text" onClick={signOut}>
+              Sign out
+            </Button>
+          </Toolbar>
+        </AppBar>
+
+        <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          {isMobile ? (
             <Box
               sx={{
+                display: "flex",
+                flexDirection: "column",
                 flex: 1,
                 minHeight: 0,
-                overflow: "auto",
-                pb: `${keyboardInsetPx}px`,
+                overflow: "hidden",
               }}
             >
-              {mobileLowerTab === 0 ? (
-                renderSidebar(true)
-              ) : mobileLowerTab === 2 && isAdmin ? (
-                adminPanelEl
-              ) : (
-                <>
-                  {selectedStepId &&
-                    !selectedTreasureId &&
-                    orderedStepIdsForNav.length > 0 && (
-                      <Toolbar
-                        variant="dense"
-                        sx={{
-                          gap: 1,
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                          borderBottom: (t) => `1px solid ${t.palette.divider}`,
-                        }}
-                      >
-                        <IconButton
-                          size="small"
-                          aria-label="Previous step"
-                          disabled={stepNavIndex <= 0}
-                          onClick={() => {
-                            if (stepNavIndex <= 0) return;
-                            const prevId = orderedStepIdsForNav[stepNavIndex - 1];
-                            if (prevId) setSelectedStepId(prevId);
-                          }}
-                        >
-                          <ChevronLeftIcon />
-                        </IconButton>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ flex: 1, textAlign: "center" }}
-                        >
-                          {stepNavIndex >= 0
-                            ? `Step ${stepNavIndex + 1} of ${orderedStepIdsForNav.length}`
-                            : "—"}
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          aria-label="Next step"
-                          disabled={
-                            stepNavIndex < 0 ||
-                            stepNavIndex >= orderedStepIdsForNav.length - 1
-                          }
-                          onClick={() => {
-                            if (stepNavIndex < 0) return;
-                            if (stepNavIndex >= orderedStepIdsForNav.length - 1) return;
-                            const nextId = orderedStepIdsForNav[stepNavIndex + 1];
-                            if (nextId) setSelectedStepId(nextId);
-                          }}
-                        >
-                          <ChevronRightIcon />
-                        </IconButton>
-                      </Toolbar>
-                    )}
-                  {renderEditors(true)}
-                </>
-              )}
+              {!showAdminPanel ? (
+                <Box
+                  sx={{
+                    flex: "0 0 42vh",
+                    minHeight: 260,
+                    maxHeight: "50vh",
+                    p: 1,
+                    boxSizing: "border-box",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <Paper elevation={0} sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+                    {renderMapView(true)}
+                  </Paper>
+                </Box>
+              ) : null}
+              <Box
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  borderTop: showAdminPanel
+                    ? undefined
+                    : (t) => `1px solid ${t.palette.divider}`,
+                }}
+              >
+                {showAdminPanel ? (
+                  <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1 }}>
+                    {adminPanelEl}
+                  </Box>
+                ) : (
+                  <>
+                    <Tabs
+                      value={mobileLowerTab}
+                      onChange={(_, v) => setMobileLowerTab(v as number)}
+                      variant="fullWidth"
+                    >
+                      <Tab label="List" />
+                      <Tab label="Edit" />
+                    </Tabs>
+                    <Box
+                      sx={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflow: "auto",
+                        pb: `${keyboardInsetPx}px`,
+                      }}
+                    >
+                      {mobileLowerTab === 0 ? (
+                        renderSidebar(true)
+                      ) : (
+                        <>
+                          {selectedStepId &&
+                            !selectedTreasureId &&
+                            orderedStepIdsForNav.length > 0 && (
+                              <Toolbar
+                                variant="dense"
+                                sx={{
+                                  gap: 1,
+                                  flexWrap: "wrap",
+                                  alignItems: "center",
+                                  borderBottom: (t) =>
+                                    `1px solid ${t.palette.divider}`,
+                                }}
+                              >
+                                <IconButton
+                                  size="small"
+                                  aria-label="Previous step"
+                                  disabled={stepNavIndex <= 0}
+                                  onClick={() => {
+                                    if (stepNavIndex <= 0) return;
+                                    const prevId =
+                                      orderedStepIdsForNav[stepNavIndex - 1];
+                                    if (prevId) setSelectedStepId(prevId);
+                                  }}
+                                >
+                                  <ChevronLeftIcon />
+                                </IconButton>
+                                <Typography
+                                  variant="body2"
+                                  color="text.secondary"
+                                  sx={{ flex: 1, textAlign: "center" }}
+                                >
+                                  {stepNavIndex >= 0
+                                    ? `Step ${stepNavIndex + 1} of ${orderedStepIdsForNav.length}`
+                                    : "—"}
+                                </Typography>
+                                <IconButton
+                                  size="small"
+                                  aria-label="Next step"
+                                  disabled={
+                                    stepNavIndex < 0 ||
+                                    stepNavIndex >=
+                                      orderedStepIdsForNav.length - 1
+                                  }
+                                  onClick={() => {
+                                    if (stepNavIndex < 0) return;
+                                    if (
+                                      stepNavIndex >=
+                                      orderedStepIdsForNav.length - 1
+                                    )
+                                      return;
+                                    const nextId =
+                                      orderedStepIdsForNav[stepNavIndex + 1];
+                                    if (nextId) setSelectedStepId(nextId);
+                                  }}
+                                >
+                                  <ChevronRightIcon />
+                                </IconButton>
+                              </Toolbar>
+                            )}
+                          {renderEditors(true)}
+                        </>
+                      )}
+                    </Box>
+                  </>
+                )}
+              </Box>
             </Box>
-          </Box>
+          ) : (
+            <Box sx={{ display: "flex", flex: 1, minHeight: 0 }}>
+              {showAdminPanel ? (
+                <Box
+                  sx={{
+                    width: 360,
+                    flexShrink: 0,
+                    borderRight: (t) => `1px solid ${t.palette.divider}`,
+                    overflow: "auto",
+                  }}
+                >
+                  {adminPanelEl}
+                </Box>
+              ) : (
+                renderSidebar(false)
+              )}
+              <Box sx={{ flex: 1, p: 2, minWidth: 0 }}>
+                <Paper elevation={0} sx={{ height: "100%", overflow: "hidden" }}>
+                  {renderMapView(false)}
+                </Paper>
+              </Box>
+              {!showAdminPanel ? (
+                <Box
+                  sx={{
+                    width: 380,
+                    flexShrink: 0,
+                    borderLeft: (t) => `1px solid ${t.palette.divider}`,
+                    display: "flex",
+                    flexDirection: "column",
+                    minHeight: 0,
+                  }}
+                >
+                  {renderEditors(false)}
+                </Box>
+              ) : null}
+            </Box>
+          )}
         </Box>
-      ) : (
-        <Box sx={{ display: "flex", height: "100vh", minHeight: 0 }}>
-          {renderSidebar(false)}
-          <Box sx={{ flex: 1, p: 2, minWidth: 0 }}>
-            <Paper elevation={0} sx={{ height: "100%", overflow: "hidden" }}>
-              {renderMapView(false)}
-            </Paper>
-          </Box>
-          <Box
-            sx={{
-              width: 380,
-              flexShrink: 0,
-              borderLeft: (t) => `1px solid ${t.palette.divider}`,
-              display: "flex",
-              flexDirection: "column",
-              minHeight: 0,
-            }}
-          >
-            {renderEditors(false)}
-          </Box>
-        </Box>
-      )}
+      </Box>
       {navDialog}
     </>
   );
