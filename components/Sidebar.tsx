@@ -860,64 +860,60 @@ export default function Sidebar({
         overflowX: "hidden",
       }}
     >
-      <Box
-        sx={{
-          p: 2,
-          display: "flex",
-          alignItems: "center",
-          gap: 1,
-          flexWrap: "wrap",
-        }}
-      >
-        {showBack && (
-          <IconButton onClick={onBack} size="small" aria-label="Back">
-            <ArrowBackIcon fontSize="small" />
-          </IconButton>
-        )}
-        <Typography
-          variant="h6"
-          sx={{
-            fontWeight: 700,
-            minWidth: 0,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            flex: 1,
-          }}
-        >
-          {headerLabel}
-        </Typography>
+      <Box sx={{ p: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          {showBack && (
+            <IconButton onClick={onBack} size="small" aria-label="Back">
+              <ArrowBackIcon fontSize="small" />
+            </IconButton>
+          )}
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 700,
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: 1,
+            }}
+          >
+            {headerLabel}
+          </Typography>
+        </Box>
         {selectedRegionId ? (
-          <Button size="small" variant="outlined" onClick={openRenameDialog}>
-            Rename
-          </Button>
-        ) : null}
-        {selectedChain ? (
-          <>
-            <Chip
-              size="small"
-              label={selectedChain.optional !== false ? "Optional" : "Main"}
-              clickable={!flagBusy}
-              disabled={flagBusy}
-              onClick={toggleOptional}
-              color="primary"
-              variant={selectedChain.optional !== false ? "outlined" : "filled"}
-              sx={
-                selectedChain.optional !== false
-                  ? undefined
-                  : { fontWeight: 700 }
-              }
-            />
-            <Chip
-              size="small"
-              label={selectedChain.is_eatery ? "Eatery" : "Attraction"}
-              clickable={!flagBusy}
-              disabled={flagBusy}
-              onClick={toggleEatery}
-              color="default"
-              variant={selectedChain.is_eatery ? "filled" : "outlined"}
-            />
-          </>
+          <Box sx={{ mt: 1, display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+            <Button size="small" variant="outlined" onClick={openRenameDialog}>
+              Rename
+            </Button>
+            {selectedChain ? (
+              <>
+                <Chip
+                  size="small"
+                  label={selectedChain.optional !== false ? "Optional" : "Main"}
+                  clickable={!flagBusy}
+                  disabled={flagBusy}
+                  onClick={toggleOptional}
+                  color="primary"
+                  variant={selectedChain.optional !== false ? "outlined" : "filled"}
+                  sx={
+                    selectedChain.optional !== false
+                      ? undefined
+                      : { fontWeight: 700 }
+                  }
+                />
+                <Chip
+                  size="small"
+                  label={selectedChain.is_eatery ? "Eatery" : "Attraction"}
+                  clickable={!flagBusy}
+                  disabled={flagBusy}
+                  onClick={toggleEatery}
+                  color="default"
+                  variant={selectedChain.is_eatery ? "filled" : "outlined"}
+                />
+              </>
+            ) : null}
+          </Box>
         ) : null}
       </Box>
       <Divider />
