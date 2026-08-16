@@ -3,6 +3,7 @@
 
 import { PuzzleChain, PuzzleStep, Region, Treasure } from "@/types/database";
 import type { MapHover } from "@/types/mapUi";
+import type { Country } from "@/lib/countries";
 import {
   MapContainer,
   CircleMarker,
@@ -73,6 +74,7 @@ function pickTreasureIcon(selected: boolean, hovered: boolean) {
 }
 
 type Props = {
+  countries: Country[];
   regions: Region[];
   chains: PuzzleChain[];
   steps: PuzzleStep[];
@@ -80,6 +82,7 @@ type Props = {
   regionSteps: PuzzleStep[];
   treasures: Treasure[];
   focusToken: number;
+  selectedCountryId: string | null;
   selectedRegionId: string | null;
   selectedChainId: string | null;
   /** True once the steps fetch for the selected chain has completed. */
@@ -96,6 +99,7 @@ type Props = {
     | { kind: "treasure"; treasureId: string };
   onPlacementMapClick: (lat: number, lng: number) => void;
   onCancelPlacement: () => void;
+  onSelectCountry: (id: string) => void;
   onSelectRegion: (id: string) => void;
   onSelectChain: (id: string) => void;
   onSelectStep: (id: string) => void;
@@ -269,11 +273,13 @@ function placementHint(placement: Props["placement"]): string {
 
 export default function MapView(props: Props) {
   const {
+    countries,
     regions,
     chains,
     steps,
     treasures,
     focusToken,
+    selectedCountryId,
     selectedRegionId,
     selectedChainId,
     chainStepsReady,
@@ -284,6 +290,7 @@ export default function MapView(props: Props) {
     placement,
     onPlacementMapClick,
     onCancelPlacement,
+    onSelectCountry,
     onSelectRegion,
     onSelectChain,
     onSelectStep,
@@ -300,8 +307,10 @@ export default function MapView(props: Props) {
     invalidateSizeKey = 0,
   } = props;
 
-  const isRoot = !selectedRegionId;
-  const showRegionMarkers = isRoot;
+  const atCountriesRoot = !selectedCountryId;
+  const atCountryLevel = !!selectedCountryId && !selectedRegionId;
+  const showCountryMarkers = atCountriesRoot;
+  const showRegionMarkers = atCountryLevel;
   const regionChains = useMemo(
     () =>
       selectedRegionId
@@ -316,14 +325,23 @@ export default function MapView(props: Props) {
       s.latitude !== null && s.longitude !== null,
   );
   const showChainMarkers =
-    !selectedChainId || visibleStepsWithCoords.length === 0;
+    !!selectedRegionId &&
+    (!selectedChainId || visibleStepsWithCoords.length === 0);
 
   const trail = visibleStepsWithCoords
     .slice()
     .sort((a, b) => a.order_index - b.order_index)
     .map((s) => [s.latitude, s.longitude] as [number, number]);
 
-  const rootPoints: LatLng[] = useMemo(
+  const countryPoints: LatLng[] = useMemo(
+    () =>
+      countries.map(
+        (c) => [c.latitude, c.longitude] as LatLng,
+      ),
+    [countries],
+  );
+
+  const countryLevelPoints: LatLng[] = useMemo(
     () =>
       regions
         .filter((r) => r.latitude !== null && r.longitude !== null)
@@ -355,11 +373,13 @@ export default function MapView(props: Props) {
     [regionChains, selectedChainId],
   );
 
-  const viewLevel: "root" | "region" | "chain" = isRoot
-    ? "root"
-    : selectedChainId
-      ? "chain"
-      : "region";
+  const viewLevel: "countries" | "country" | "region" | "chain" = atCountriesRoot
+    ? "countries"
+    : atCountryLevel
+      ? "country"
+      : selectedChainId
+        ? "chain"
+        : "region";
 
   const chainAnchor: LatLng | null = useMemo(() => {
     if (
@@ -375,13 +395,32 @@ export default function MapView(props: Props) {
   const chainStepPoints = chainPoints;
 
   const cameraTarget: CameraTarget | null = useMemo(() => {
-    if (viewLevel === "root") {
-      const pts = sanitizeLatLngPoints(rootPoints);
+    if (viewLevel === "countries") {
+      const pts = sanitizeLatLngPoints(countryPoints);
       return pts.length >= 2
-        ? { kind: "fitBounds", points: pts, paddingRatio: 0.12, maxZoom: 11 }
+        ? { kind: "fitBounds", points: pts, paddingRatio: 0.2, maxZoom: 5 }
         : pts.length === 1
-          ? { kind: "setView", center: pts[0], zoom: 10 }
+          ? { kind: "setView", center: pts[0], zoom: 5 }
           : null;
+    }
+
+    if (viewLevel === "country") {
+      const pts = sanitizeLatLngPoints(countryLevelPoints);
+      if (pts.length >= 2) {
+        return { kind: "fitBounds", points: pts, paddingRatio: 0.12, maxZoom: 11 };
+      }
+      if (pts.length === 1) {
+        return { kind: "setView", center: pts[0], zoom: 10 };
+      }
+      const selected = countries.find((c) => c.id === selectedCountryId);
+      if (selected) {
+        return {
+          kind: "setView",
+          center: [selected.latitude, selected.longitude],
+          zoom: 6,
+        };
+      }
+      return null;
     }
 
     if (viewLevel === "region") {
@@ -415,17 +454,34 @@ export default function MapView(props: Props) {
     chainAnchor,
     chainStepPoints,
     chainStepsReady,
+    countries,
+    countryLevelPoints,
+    countryPoints,
     regionPoints,
-    rootPoints,
+    selectedCountryId,
     viewLevel,
   ]);
 
   const cameraKey = useMemo(() => {
-    if (viewLevel === "root") return "root";
+    if (viewLevel === "countries") return "countries";
+    if (viewLevel === "country")
+      return `country:${selectedCountryId ?? "none"}:focus:${focusToken}`;
     if (viewLevel === "region")
       return `region:${selectedRegionId ?? "none"}:focus:${focusToken}`;
     return `chain:${selectedChainId ?? "none"}:ready:${chainStepsReady ? 1 : 0}:focus:${focusToken}`;
-  }, [viewLevel, selectedRegionId, selectedChainId, chainStepsReady, focusToken]);
+  }, [
+    viewLevel,
+    selectedCountryId,
+    selectedRegionId,
+    selectedChainId,
+    chainStepsReady,
+    focusToken,
+  ]);
+
+  const countryMarkers = countries.map((c) => ({
+    country: c,
+    position: [c.latitude, c.longitude] as [number, number],
+  }));
 
   const regionMarkers = regions
     .filter((r) => r.latitude !== null && r.longitude !== null)
@@ -518,6 +574,25 @@ export default function MapView(props: Props) {
             />
           )}
 
+          {showCountryMarkers &&
+            countryMarkers.map(({ country, position }) => {
+              const hovered = hoverMatch(mapHover, "country", country.id);
+              const icon = pickStandardIcon(false, hovered);
+              return (
+                <Marker
+                  key={country.id}
+                  position={position}
+                  icon={icon}
+                  eventHandlers={{
+                    click: () => onSelectCountry(country.id),
+                    mouseover: () =>
+                      onHoverChange({ kind: "country", id: country.id }),
+                    mouseout: () => onHoverChange(null),
+                  }}
+                />
+              );
+            })}
+
           {showRegionMarkers &&
             regionMarkers.map(({ region, position }) => {
               const hovered = hoverMatch(mapHover, "region", region.id);
@@ -537,7 +612,7 @@ export default function MapView(props: Props) {
               );
             })}
 
-          {!isRoot &&
+          {!!selectedRegionId &&
             showChainMarkers &&
             regionChainsWithCoords.map((c) => {
               const hovered = hoverMatch(mapHover, "chain", c.id);

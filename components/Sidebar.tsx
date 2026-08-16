@@ -1,5 +1,6 @@
 import { formatSupabaseError } from "@/lib/supabaseError";
 import { puzzleStepTypeLabel } from "@/lib/stepLabels";
+import { getCountryById, type Country } from "@/lib/countries";
 import {
   PuzzleChain,
   PuzzleStep,
@@ -50,7 +51,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useMemo, useState } from "react";
 
 type Props = {
-  countryName: string;
+  countries: Country[];
+  selectedCountryId: string | null;
   regions: Region[];
   chains: PuzzleChain[];
   steps: PuzzleStep[];
@@ -62,6 +64,7 @@ type Props = {
   onZoomStepSpotlight: (lat: number, lng: number) => void;
   onHoverChange: (next: MapHover | null) => void;
   onBack: () => void;
+  onSelectCountry: (id: string) => void;
   onSelectRegion: (id: string) => void;
   onSelectChain: (id: string) => void;
   onSelectStep: (id: string) => void;
@@ -375,7 +378,8 @@ function SortableStepRow({
 }
 
 export default function Sidebar({
-  countryName,
+  countries,
+  selectedCountryId,
   regions,
   chains,
   steps,
@@ -387,6 +391,7 @@ export default function Sidebar({
   onZoomStepSpotlight,
   onHoverChange,
   onBack,
+  onSelectCountry,
   onSelectRegion,
   onSelectChain,
   onSelectStep,
@@ -424,6 +429,7 @@ export default function Sidebar({
   onSetChainOptional,
   onSetChainIsEatery,
 }: Props) {
+  const selectedCountry = getCountryById(selectedCountryId);
   const selectedRegion = selectedRegionId
     ? regions.find((r) => r.id === selectedRegionId) || null
     : null;
@@ -432,9 +438,13 @@ export default function Sidebar({
     ? chains.find((c) => c.id === selectedChainId) || null
     : null;
 
-  const headerLabel = selectedChain?.title || selectedRegion?.name || countryName;
+  const headerLabel =
+    selectedChain?.title ||
+    selectedRegion?.name ||
+    selectedCountry?.name ||
+    "Countries";
 
-  const showBack = selectedRegionId !== null;
+  const showBack = selectedCountryId !== null;
 
   const regionChains = selectedRegionId
     ? chains.filter((c) => c.region_id === selectedRegionId)
@@ -918,7 +928,41 @@ export default function Sidebar({
       </Box>
       <Divider />
 
-      {!selectedRegionId && (
+      {!selectedCountryId && (
+        <>
+          <List dense sx={{ p: 1, overflow: "auto", flex: 1 }}>
+            {countries.map((c) => (
+              <ListItemButton
+                key={c.id}
+                onClick={() => onSelectCountry(c.id)}
+                onMouseEnter={() => onHoverChange({ kind: "country", id: c.id })}
+                onMouseLeave={() => onHoverChange(null)}
+                sx={{ minWidth: 0 }}
+              >
+                <ListItemText
+                  primary={
+                    <Typography
+                      variant="body1"
+                      noWrap
+                      sx={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
+                      {c.name}
+                    </Typography>
+                  }
+                  sx={{ minWidth: 0 }}
+                />
+              </ListItemButton>
+            ))}
+          </List>
+          {countries.length === 0 && (
+            <Typography variant="caption" color="text.secondary" sx={{ px: 2, pb: 2 }}>
+              No countries available for your account.
+            </Typography>
+          )}
+        </>
+      )}
+
+      {selectedCountryId && !selectedRegionId && (
         <>
           <List dense sx={{ p: 1, overflow: "auto", flex: 1 }}>
             {regions.map((r) => (

@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { formatSupabaseError } from "@/lib/supabaseError";
 
+import {
+  COUNTRIES,
+  getCountryById,
+  normalizeCountryId,
+  type Country,
+} from "@/lib/countries";
 import { PuzzleChain, PuzzleStep, Region, Treasure } from "@/types/database";
 import type { MapHover } from "@/types/mapUi";
 
@@ -143,7 +149,9 @@ export default function Dashboard() {
   const [regionSteps, setRegionSteps] = useState<PuzzleStep[]>([]);
   const [treasures, setTreasures] = useState<Treasure[]>([]);
 
-  const [selectedCountry] = useState<string>("Philippines");
+  const [selectedCountryId, setSelectedCountryId] = useState<string | null>(
+    null,
+  );
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [selectedChainId, setSelectedChainId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
@@ -151,11 +159,27 @@ export default function Dashboard() {
     null,
   );
 
-  const visibleRegions = useMemo(() => {
+  const accessibleRegions = useMemo(() => {
     if (!accessOk) return [];
     if (isAdmin || editorRegionIds === null) return regions;
     return regions.filter((r) => editorRegionIds.has(r.id));
   }, [accessOk, isAdmin, editorRegionIds, regions]);
+
+  const visibleRegions = useMemo(() => {
+    if (!selectedCountryId) return [];
+    return accessibleRegions.filter(
+      (r) => normalizeCountryId(r.country) === selectedCountryId,
+    );
+  }, [accessibleRegions, selectedCountryId]);
+
+  const sidebarCountries = useMemo((): Country[] => {
+    if (!accessOk) return [];
+    if (isAdmin) return [...COUNTRIES];
+    const ids = new Set(
+      accessibleRegions.map((r) => normalizeCountryId(r.country)).filter(Boolean),
+    );
+    return COUNTRIES.filter((c) => ids.has(c.id));
+  }, [accessOk, isAdmin, accessibleRegions]);
 
   const visibleChains = useMemo(() => {
     if (!accessOk) return [];
@@ -219,6 +243,7 @@ export default function Dashboard() {
     | null
     | { type: "backToRoot" }
     | { type: "backOneLevel" }
+    | { type: "selectCountry"; countryId: string }
     | { type: "selectRegion"; regionId: string }
     | { type: "selectChain"; chainId: string }
   >(null);
@@ -298,12 +323,7 @@ export default function Dashboard() {
       .from("regions")
       .select("*")
       .then(({ data }) => {
-        const all = data || [];
-        setRegions(
-          all.filter(
-            (r) => (r.country || "").toLowerCase() === "philippines",
-          ) as Region[],
-        );
+        setRegions((data || []) as Region[]);
       });
   }, [accessOk]);
 
@@ -668,6 +688,19 @@ export default function Dashboard() {
     setSelectedStepId((prev) => (prev === stepId ? null : prev));
   };
 
+  const applySelectCountry = (countryId: string) => {
+    setPlacement(null);
+    setSelectedCountryId(countryId);
+    setSelectedRegionId(null);
+    setSelectedChainId(null);
+    setSelectedStepId(null);
+    setSelectedTreasureId(null);
+    setSteps([]);
+    setRegionSteps([]);
+    setTreasures([]);
+    setMapFocusToken((n) => n + 1);
+  };
+
   const applySelectRegion = (regionId: string) => {
     setPlacement(null);
     setSelectedRegionId(regionId);
@@ -678,6 +711,18 @@ export default function Dashboard() {
   };
 
   const applyBackToRoot = () => {
+    setPlacement(null);
+    setSelectedCountryId(null);
+    setSelectedRegionId(null);
+    setSelectedChainId(null);
+    setSelectedStepId(null);
+    setSelectedTreasureId(null);
+    setSteps([]);
+    setRegionSteps([]);
+    setTreasures([]);
+  };
+
+  const applyBackToCountry = () => {
     setPlacement(null);
     setSelectedRegionId(null);
     setSelectedChainId(null);
@@ -697,12 +742,17 @@ export default function Dashboard() {
       setSteps([]);
       return;
     }
-    if (selectedRegionId) applyBackToRoot();
+    if (selectedRegionId) {
+      applyBackToCountry();
+      return;
+    }
+    if (selectedCountryId) applyBackToRoot();
   };
 
   const applyNav = (nav: NonNullable<typeof pendingNav>) => {
     if (nav.type === "backToRoot") return applyBackToRoot();
     if (nav.type === "backOneLevel") return applyBackOneLevel();
+    if (nav.type === "selectCountry") return applySelectCountry(nav.countryId);
     if (nav.type === "selectRegion") return applySelectRegion(nav.regionId);
     if (nav.type === "selectChain") {
       setSelectedStepId(null);
@@ -819,26 +869,30 @@ export default function Dashboard() {
     if (!isAdmin) {
       throw new Error("Only administrators can create new regions.");
     }
+    if (!selectedCountryId) {
+      throw new Error("Select a country before creating a region.");
+    }
+    const country = getCountryById(selectedCountryId);
+    const latitude = country?.latitude ?? defaultMapLat;
+    const longitude = country?.longitude ?? defaultMapLng;
     const slug = (input.slug?.trim() || slugify(input.name)) || "region";
     const { data, error } = await supabase
       .from("regions")
       .insert({
         name: input.name.trim(),
         slug,
-        country: "philippines",
-        latitude: defaultMapLat,
-        longitude: defaultMapLng,
+        country: selectedCountryId,
+        latitude,
+        longitude,
         ready_to_publish: false,
       })
       .select()
       .single();
     if (error) throw new Error(formatSupabaseError(error));
     const row = data as Region;
-    if ((row.country || "").toLowerCase() === "philippines") {
-      setRegions((prev) =>
-        [...prev, row].sort((a, b) => a.name.localeCompare(b.name)),
-      );
-    }
+    setRegions((prev) =>
+      [...prev, row].sort((a, b) => a.name.localeCompare(b.name)),
+    );
   };
 
   const createChain = async (input: {
@@ -1194,7 +1248,8 @@ export default function Dashboard() {
 
   const renderSidebar = (fullWidth: boolean) => (
     <Sidebar
-      countryName={selectedCountry}
+      countries={sidebarCountries}
+      selectedCountryId={selectedCountryId}
       regions={visibleRegions}
       chains={visibleChains}
       steps={steps}
@@ -1212,6 +1267,9 @@ export default function Dashboard() {
       }}
       onHoverChange={setMapHover}
       onBack={() => maybeNavigate({ type: "backOneLevel" })}
+      onSelectCountry={(countryId) =>
+        maybeNavigate({ type: "selectCountry", countryId })
+      }
       onSelectRegion={(regionId) => maybeNavigate({ type: "selectRegion", regionId })}
       onSelectChain={(chainId) => maybeNavigate({ type: "selectChain", chainId })}
       onSelectStep={onSelectStepFromUi}
@@ -1260,12 +1318,14 @@ export default function Dashboard() {
 
   const renderMapView = (enableUserLocation: boolean) => (
     <MapView
+      countries={sidebarCountries}
       regions={visibleRegions}
       chains={visibleChains}
       steps={steps}
       regionSteps={regionSteps}
       treasures={treasures}
       focusToken={mapFocusToken}
+      selectedCountryId={selectedCountryId}
       selectedRegionId={selectedRegionId}
       selectedChainId={selectedChainId}
       chainStepsReady={!!selectedChainId && stepsLoadedForChainId === selectedChainId}
@@ -1276,6 +1336,9 @@ export default function Dashboard() {
       placement={placement}
       onPlacementMapClick={completePlacement}
       onCancelPlacement={() => setPlacement(null)}
+      onSelectCountry={(countryId) =>
+        maybeNavigate({ type: "selectCountry", countryId })
+      }
       onSelectRegion={(regionId) => maybeNavigate({ type: "selectRegion", regionId })}
       onSelectChain={(chainId) => maybeNavigate({ type: "selectChain", chainId })}
       onSelectStep={onSelectStepFromUi}
