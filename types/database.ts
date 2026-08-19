@@ -15,7 +15,8 @@ export type PuzzleStepType =
   | "text"
   | "qr"
   | "number"
-  | "multiple_choice";
+  | "multiple_choice"
+  | "interactive";
 
 export function isPuzzleStepType(value: string): value is PuzzleStepType {
   return (
@@ -23,7 +24,8 @@ export function isPuzzleStepType(value: string): value is PuzzleStepType {
     value === "text" ||
     value === "qr" ||
     value === "number" ||
-    value === "multiple_choice"
+    value === "multiple_choice" ||
+    value === "interactive"
   );
 }
 
@@ -31,6 +33,63 @@ export function isQuestionStepType(
   type: PuzzleStepType,
 ): type is "text" | "number" {
   return type === "text" || type === "number";
+}
+
+// --- Interactive step config types ---
+
+export type InteractiveSubtype =
+  | "camera_overlay"
+  | "symbol_codex"
+  | "code_wheel"
+  | "jigsaw";
+
+export const INTERACTIVE_SUBTYPES: readonly InteractiveSubtype[] = [
+  "camera_overlay",
+  "symbol_codex",
+  "code_wheel",
+  "jigsaw",
+] as const;
+
+export const INTERACTIVE_SUBTYPE_LABELS: Record<InteractiveSubtype, string> = {
+  camera_overlay: "Camera overlay",
+  symbol_codex: "Symbol codex",
+  code_wheel: "Code wheel",
+  jigsaw: "Jigsaw",
+};
+
+export type CameraOverlayConfig = {
+  subtype: "camera_overlay";
+  overlayImagePath: string;
+  overlayOpacity?: number;
+};
+
+export type SymbolCodexConfig = {
+  subtype: "symbol_codex";
+  symbols: string[];
+  slotCount: number;
+  solution: number[];
+};
+
+export type CodeWheelConfig = {
+  subtype: "code_wheel";
+  rings: { symbols: string[] }[];
+  solution: number[];
+};
+
+export type JigsawConfig = {
+  subtype: "jigsaw";
+  imagePath: string;
+  gridSize: number;
+};
+
+export type InteractiveConfig =
+  | CameraOverlayConfig
+  | SymbolCodexConfig
+  | CodeWheelConfig
+  | JigsawConfig;
+
+export function isInteractiveSubtype(value: string): value is InteractiveSubtype {
+  return (INTERACTIVE_SUBTYPES as readonly string[]).includes(value);
 }
 
 // DB-derived row type (matches Supabase exactly; `type` is `string` in DB).

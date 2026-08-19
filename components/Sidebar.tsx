@@ -1,5 +1,6 @@
 import { formatSupabaseError } from "@/lib/supabaseError";
 import { puzzleStepTypeLabel } from "@/lib/stepLabels";
+import type { InteractiveConfig } from "@/types/database";
 import { getCountryById, type Country } from "@/lib/countries";
 import {
   PuzzleChain,
@@ -244,6 +245,7 @@ function SortableStepRow({
   id,
   stepNumber,
   stepType,
+  stepConfig,
   stepContent,
   locked,
   selected,
@@ -259,6 +261,7 @@ function SortableStepRow({
   id: string;
   stepNumber: number;
   stepType: string;
+  stepConfig?: InteractiveConfig | null;
   stepContent: string | null;
   locked: boolean;
   selected: boolean;
@@ -343,7 +346,7 @@ function SortableStepRow({
             {stepContentPreview(stepContent) || "No content yet"}
           </Typography>
           <Typography variant="caption" color="text.secondary" noWrap>
-            {puzzleStepTypeLabel(stepType)}
+            {puzzleStepTypeLabel(stepType, stepConfig)}
           </Typography>
         </Box>
 
@@ -1316,6 +1319,7 @@ export default function Sidebar({
                       selected={selectedStepId === s.id}
                       stepNumber={idx + 1}
                       stepType={s.type}
+                      stepConfig={s.config as InteractiveConfig | null}
                       stepContent={s.content}
                       locked={pinnedInfoStepId === s.id}
                       readyToPublish={s.ready_to_publish}

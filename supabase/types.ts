@@ -144,6 +144,7 @@ export type Database = {
         Row: {
           answer: string | null
           chain_id: string
+          config: Json | null
           content: string | null
           created_at: string
           hints: Json | null
@@ -160,6 +161,7 @@ export type Database = {
         Insert: {
           answer?: string | null
           chain_id: string
+          config?: Json | null
           content?: string | null
           created_at?: string
           hints?: Json | null
@@ -176,6 +178,7 @@ export type Database = {
         Update: {
           answer?: string | null
           chain_id?: string
+          config?: Json | null
           content?: string | null
           created_at?: string
           hints?: Json | null

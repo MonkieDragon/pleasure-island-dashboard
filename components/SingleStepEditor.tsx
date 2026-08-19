@@ -4,6 +4,15 @@ import {
   PuzzleStepType,
   isPuzzleStepType,
   isQuestionStepType,
+  isInteractiveSubtype,
+  INTERACTIVE_SUBTYPES,
+  INTERACTIVE_SUBTYPE_LABELS,
+  type InteractiveSubtype,
+  type InteractiveConfig,
+  type CameraOverlayConfig,
+  type SymbolCodexConfig,
+  type CodeWheelConfig,
+  type JigsawConfig,
 } from "@/types/database";
 import {
   Box,
@@ -16,6 +25,7 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  Slider,
   Stack,
   TextField,
   Typography,
@@ -29,6 +39,8 @@ type Draft = {
   multipleChoiceOptionsText: string;
   latText: string;
   lngText: string;
+  interactiveSubtype: InteractiveSubtype;
+  interactiveConfig: InteractiveConfig;
 };
 
 type Props = {
@@ -62,6 +74,22 @@ function parseOptionalNumber(input: string): number | null {
 /** Matches numeric answers for question steps (integers/decimals, optional leading minus). */
 const NUMERIC_ANSWER_PATTERN = /^-?\d+(\.\d+)?$/;
 
+const DEFAULT_INTERACTIVE_CONFIG: CameraOverlayConfig = {
+  subtype: "camera_overlay",
+  overlayImagePath: "",
+  overlayOpacity: 0.5,
+};
+
+function parseInteractiveConfig(raw: unknown): InteractiveConfig {
+  if (raw && typeof raw === "object" && "subtype" in raw) {
+    const obj = raw as Record<string, unknown>;
+    if (isInteractiveSubtype(obj.subtype as string)) {
+      return raw as InteractiveConfig;
+    }
+  }
+  return DEFAULT_INTERACTIVE_CONFIG;
+}
+
 function toDraft(step: PuzzleStep): Draft {
   const type: PuzzleStepType = isPuzzleStepType(step.type) ? step.type : "text";
   const rawAnswer = step.answer;
@@ -70,6 +98,9 @@ function toDraft(step: PuzzleStep): Draft {
   const optionsText = Array.isArray(step.multiple_choice_options)
     ? step.multiple_choice_options.join("\n")
     : "";
+
+  const config = parseInteractiveConfig(step.config);
+
   return {
     type,
     content: step.content ?? "",
@@ -78,7 +109,277 @@ function toDraft(step: PuzzleStep): Draft {
     multipleChoiceOptionsText: optionsText,
     latText: step.latitude == null ? "" : String(step.latitude),
     lngText: step.longitude == null ? "" : String(step.longitude),
+    interactiveSubtype: config.subtype,
+    interactiveConfig: config,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Interactive config sub-editor
+// ---------------------------------------------------------------------------
+
+function InteractiveConfigEditor({
+  config,
+  answerError,
+  onChange,
+  mobileInputProps,
+}: {
+  config: InteractiveConfig;
+  answerError: string | null;
+  onChange: (next: InteractiveConfig) => void;
+  mobileInputProps: Record<string, unknown>;
+}) {
+  const setSubtype = (subtype: InteractiveSubtype) => {
+    switch (subtype) {
+      case "camera_overlay":
+        onChange({ subtype: "camera_overlay", overlayImagePath: "", overlayOpacity: 0.5 });
+        break;
+      case "symbol_codex":
+        onChange({ subtype: "symbol_codex", symbols: [], slotCount: 3, solution: [] });
+        break;
+      case "code_wheel":
+        onChange({ subtype: "code_wheel", rings: [{ symbols: [] }], solution: [0] });
+        break;
+      case "jigsaw":
+        onChange({ subtype: "jigsaw", imagePath: "", gridSize: 3 });
+        break;
+    }
+  };
+
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2, p: 1.5, border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
+      <Typography variant="subtitle2">Interactive puzzle config</Typography>
+
+      <FormControl size="small">
+        <InputLabel id="interactive-subtype-label">Subtype</InputLabel>
+        <Select
+          labelId="interactive-subtype-label"
+          label="Subtype"
+          value={config.subtype}
+          onChange={(e) => setSubtype(e.target.value as InteractiveSubtype)}
+        >
+          {INTERACTIVE_SUBTYPES.map((st) => (
+            <MenuItem key={st} value={st}>{INTERACTIVE_SUBTYPE_LABELS[st]}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      {config.subtype === "camera_overlay" && (
+        <CameraOverlayFields config={config} onChange={onChange} mobileInputProps={mobileInputProps} />
+      )}
+      {config.subtype === "symbol_codex" && (
+        <SymbolCodexFields config={config} onChange={onChange} mobileInputProps={mobileInputProps} />
+      )}
+      {config.subtype === "code_wheel" && (
+        <CodeWheelFields config={config} onChange={onChange} mobileInputProps={mobileInputProps} />
+      )}
+      {config.subtype === "jigsaw" && (
+        <JigsawFields config={config} onChange={onChange} mobileInputProps={mobileInputProps} />
+      )}
+
+      {answerError && <Typography variant="body2" color="error">{answerError}</Typography>}
+    </Box>
+  );
+}
+
+function CameraOverlayFields({
+  config,
+  onChange,
+  mobileInputProps,
+}: {
+  config: CameraOverlayConfig;
+  onChange: (next: InteractiveConfig) => void;
+  mobileInputProps: Record<string, unknown>;
+}) {
+  return (
+    <>
+      <TextField
+        label="Overlay image path (Supabase storage)"
+        value={config.overlayImagePath}
+        onChange={(e) => onChange({ ...config, overlayImagePath: e.target.value })}
+        size="small"
+        fullWidth
+        placeholder="e.g. overlays/skyline-cebu.png"
+        {...mobileInputProps}
+      />
+      <Box>
+        <Typography variant="caption" gutterBottom>
+          Overlay opacity: {config.overlayOpacity ?? 0.5}
+        </Typography>
+        <Slider
+          value={config.overlayOpacity ?? 0.5}
+          onChange={(_, v) => onChange({ ...config, overlayOpacity: v as number })}
+          min={0.1}
+          max={1}
+          step={0.05}
+          size="small"
+        />
+      </Box>
+      <Typography variant="caption" color="text.secondary">
+        The answer field above will be used as the expected answer (e.g. &quot;7&quot; for &quot;what number is in the red box?&quot;).
+      </Typography>
+    </>
+  );
+}
+
+function SymbolCodexFields({
+  config,
+  onChange,
+  mobileInputProps,
+}: {
+  config: SymbolCodexConfig;
+  onChange: (next: InteractiveConfig) => void;
+  mobileInputProps: Record<string, unknown>;
+}) {
+  return (
+    <>
+      <TextField
+        label="Symbols (one per line, image path or key)"
+        value={config.symbols.join("\n")}
+        onChange={(e) => {
+          const symbols = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean);
+          onChange({ ...config, symbols });
+        }}
+        multiline
+        minRows={3}
+        size="small"
+        placeholder={"symbol-a\nsymbol-b\nsymbol-c"}
+        {...mobileInputProps}
+      />
+      <TextField
+        label="Number of slots"
+        type="number"
+        value={config.slotCount}
+        onChange={(e) => {
+          const slotCount = Math.max(1, parseInt(e.target.value) || 1);
+          onChange({ ...config, slotCount });
+        }}
+        size="small"
+        {...mobileInputProps}
+      />
+      <TextField
+        label="Solution (comma-separated symbol indices, 0-based)"
+        value={config.solution.join(", ")}
+        onChange={(e) => {
+          const solution = e.target.value
+            .split(",")
+            .map((s) => parseInt(s.trim()))
+            .filter((n) => !isNaN(n));
+          onChange({ ...config, solution });
+        }}
+        size="small"
+        placeholder="e.g. 0, 2, 1"
+        {...mobileInputProps}
+      />
+    </>
+  );
+}
+
+function CodeWheelFields({
+  config,
+  onChange,
+  mobileInputProps,
+}: {
+  config: CodeWheelConfig;
+  onChange: (next: InteractiveConfig) => void;
+  mobileInputProps: Record<string, unknown>;
+}) {
+  const updateRing = (idx: number, symbols: string[]) => {
+    const rings = [...config.rings];
+    rings[idx] = { symbols };
+    onChange({ ...config, rings });
+  };
+
+  const addRing = () => {
+    const rings = [...config.rings, { symbols: [] }];
+    const solution = [...config.solution, 0];
+    onChange({ ...config, rings, solution });
+  };
+
+  const removeRing = (idx: number) => {
+    const rings = config.rings.filter((_, i) => i !== idx);
+    const solution = config.solution.filter((_, i) => i !== idx);
+    onChange({ ...config, rings: rings.length ? rings : [{ symbols: [] }], solution: solution.length ? solution : [0] });
+  };
+
+  return (
+    <>
+      {config.rings.map((ring, idx) => (
+        <Box key={idx} sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
+          <TextField
+            label={`Ring ${idx + 1} symbols (comma-separated)`}
+            value={ring.symbols.join(", ")}
+            onChange={(e) => {
+              const symbols = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+              updateRing(idx, symbols);
+            }}
+            size="small"
+            fullWidth
+            placeholder="A, B, C, D"
+            {...mobileInputProps}
+          />
+          {config.rings.length > 1 && (
+            <Button size="small" color="error" onClick={() => removeRing(idx)} sx={{ minWidth: 0, mt: 0.5 }}>
+              &times;
+            </Button>
+          )}
+        </Box>
+      ))}
+      <Button size="small" variant="outlined" onClick={addRing}>
+        Add ring
+      </Button>
+      <TextField
+        label="Solution (comma-separated index per ring, 0-based)"
+        value={config.solution.join(", ")}
+        onChange={(e) => {
+          const solution = e.target.value.split(",").map((s) => parseInt(s.trim())).filter((n) => !isNaN(n));
+          onChange({ ...config, solution });
+        }}
+        size="small"
+        placeholder="e.g. 2, 0, 3"
+        {...mobileInputProps}
+      />
+    </>
+  );
+}
+
+function JigsawFields({
+  config,
+  onChange,
+  mobileInputProps,
+}: {
+  config: JigsawConfig;
+  onChange: (next: InteractiveConfig) => void;
+  mobileInputProps: Record<string, unknown>;
+}) {
+  return (
+    <>
+      <TextField
+        label="Source image path (Supabase storage)"
+        value={config.imagePath}
+        onChange={(e) => onChange({ ...config, imagePath: e.target.value })}
+        size="small"
+        fullWidth
+        placeholder="e.g. jigsaw/temple-door.jpg"
+        {...mobileInputProps}
+      />
+      <FormControl size="small">
+        <InputLabel id="jigsaw-grid-label">Grid size</InputLabel>
+        <Select
+          labelId="jigsaw-grid-label"
+          label="Grid size"
+          value={config.gridSize}
+          onChange={(e) => onChange({ ...config, gridSize: Number(e.target.value) })}
+        >
+          <MenuItem value={2}>2 &times; 2</MenuItem>
+          <MenuItem value={3}>3 &times; 3</MenuItem>
+          <MenuItem value={4}>4 &times; 4</MenuItem>
+          <MenuItem value={5}>5 &times; 5</MenuItem>
+          <MenuItem value={6}>6 &times; 6</MenuItem>
+        </Select>
+      </FormControl>
+    </>
+  );
 }
 
 export default function SingleStepEditor({
@@ -147,7 +448,9 @@ export default function SingleStepEditor({
       base.content !== draft.content ||
       base.notes !== draft.notes ||
       base.answerText !== draft.answerText ||
-      base.multipleChoiceOptionsText !== draft.multipleChoiceOptionsText
+      base.multipleChoiceOptionsText !== draft.multipleChoiceOptionsText ||
+      (draft.type === "interactive" &&
+        JSON.stringify(base.interactiveConfig) !== JSON.stringify(draft.interactiveConfig))
     );
   }, [draft, step]);
 
@@ -184,6 +487,28 @@ export default function SingleStepEditor({
       if (a === "") return "Multiple choice steps need a correct answer.";
       if (!options.includes(a)) return "Correct answer must match one of the options exactly.";
     }
+    if (draft.type === "interactive") {
+      const cfg = draft.interactiveConfig;
+      switch (cfg.subtype) {
+        case "camera_overlay":
+          if (!cfg.overlayImagePath) return "Camera overlay needs an overlay image path.";
+          if (a === "") return "Camera overlay needs an answer.";
+          break;
+        case "symbol_codex":
+          if (cfg.symbols.length === 0) return "Symbol codex needs at least one symbol.";
+          if (cfg.slotCount < 1) return "Symbol codex needs at least 1 slot.";
+          if (cfg.solution.length !== cfg.slotCount) return "Solution length must match slot count.";
+          break;
+        case "code_wheel":
+          if (cfg.rings.length === 0) return "Code wheel needs at least one ring.";
+          if (cfg.solution.length !== cfg.rings.length) return "Solution length must match number of rings.";
+          break;
+        case "jigsaw":
+          if (!cfg.imagePath) return "Jigsaw needs a source image path.";
+          if (cfg.gridSize < 2 || cfg.gridSize > 6) return "Grid size must be between 2 and 6.";
+          break;
+      }
+    }
     return null;
   };
 
@@ -203,6 +528,8 @@ export default function SingleStepEditor({
           })()
         : null;
 
+    const config = draft.type === "interactive" ? draft.interactiveConfig : null;
+
     const next: PuzzleStep = {
       ...step,
       type: draft.type,
@@ -210,6 +537,7 @@ export default function SingleStepEditor({
       answer,
       multiple_choice_options,
       notes: draft.notes || null,
+      config,
     };
 
     await onUpdate(next);
@@ -230,8 +558,12 @@ export default function SingleStepEditor({
 
   const stepImagePath = step.image_path || null;
   const isQuestion = isQuestionStepType(draft.type);
+  const isInteractive = draft.type === "interactive";
   const showAnswerRow =
-    isQuestion || draft.type === "multiple_choice" || draft.type === "qr";
+    isQuestion ||
+    draft.type === "multiple_choice" ||
+    draft.type === "qr" ||
+    (isInteractive && draft.interactiveConfig.subtype === "camera_overlay");
 
   const mobileInputProps = compactMobile
     ? ({ inputProps: { style: { fontSize: 16 } } } as const)
@@ -273,6 +605,7 @@ export default function SingleStepEditor({
             <MenuItem value="question">question</MenuItem>
             <MenuItem value="qr">qr-code</MenuItem>
             <MenuItem value="multiple_choice">multiple-choice</MenuItem>
+            <MenuItem value="interactive">interactive</MenuItem>
           </Select>
         </FormControl>
 
@@ -349,6 +682,20 @@ export default function SingleStepEditor({
             minRows={4}
             size="small"
             {...mobileInputProps}
+          />
+        )}
+
+        {isInteractive && (
+          <InteractiveConfigEditor
+            config={draft.interactiveConfig}
+            answerError={answerError}
+            onChange={(next) =>
+              setDraft({
+                interactiveSubtype: next.subtype,
+                interactiveConfig: next,
+              })
+            }
+            mobileInputProps={mobileInputProps}
           />
         )}
 
