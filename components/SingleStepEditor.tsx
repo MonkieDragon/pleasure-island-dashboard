@@ -135,10 +135,10 @@ function InteractiveConfigEditor({
         onChange({ subtype: "camera_overlay", overlayImagePath: "", overlayOpacity: 0.5 });
         break;
       case "symbol_codex":
-        onChange({ subtype: "symbol_codex", symbols: [], slotCount: 3, solution: [] });
+        onChange({ subtype: "symbol_codex", symbols: [], slotCount: 3, answerArray: [] });
         break;
       case "code_wheel":
-        onChange({ subtype: "code_wheel", rings: [{ symbols: [] }], solution: [0] });
+        onChange({ subtype: "code_wheel", rings: [{ symbols: [] }], answerArray: [0] });
         break;
       case "jigsaw":
         onChange({ subtype: "jigsaw", imagePath: "", gridSize: 3 });
@@ -258,14 +258,14 @@ function SymbolCodexFields({
         {...mobileInputProps}
       />
       <TextField
-        label="Solution (comma-separated symbol indices, 0-based)"
-        value={config.solution.join(", ")}
+        label="Answer array (comma-separated symbol indices, 0-based)"
+        value={config.answerArray.join(", ")}
         onChange={(e) => {
-          const solution = e.target.value
+          const answerArray = e.target.value
             .split(",")
             .map((s) => parseInt(s.trim()))
             .filter((n) => !isNaN(n));
-          onChange({ ...config, solution });
+          onChange({ ...config, answerArray });
         }}
         size="small"
         placeholder="e.g. 0, 2, 1"
@@ -292,14 +292,14 @@ function CodeWheelFields({
 
   const addRing = () => {
     const rings = [...config.rings, { symbols: [] }];
-    const solution = [...config.solution, 0];
-    onChange({ ...config, rings, solution });
+    const answerArray = [...config.answerArray, 0];
+    onChange({ ...config, rings, answerArray });
   };
 
   const removeRing = (idx: number) => {
     const rings = config.rings.filter((_, i) => i !== idx);
-    const solution = config.solution.filter((_, i) => i !== idx);
-    onChange({ ...config, rings: rings.length ? rings : [{ symbols: [] }], solution: solution.length ? solution : [0] });
+    const answerArray = config.answerArray.filter((_, i) => i !== idx);
+    onChange({ ...config, rings: rings.length ? rings : [{ symbols: [] }], answerArray: answerArray.length ? answerArray : [0] });
   };
 
   return (
@@ -329,11 +329,11 @@ function CodeWheelFields({
         Add ring
       </Button>
       <TextField
-        label="Solution (comma-separated index per ring, 0-based)"
-        value={config.solution.join(", ")}
+        label="Answer array (comma-separated index per ring, 0-based)"
+        value={config.answerArray.join(", ")}
         onChange={(e) => {
-          const solution = e.target.value.split(",").map((s) => parseInt(s.trim())).filter((n) => !isNaN(n));
-          onChange({ ...config, solution });
+          const answerArray = e.target.value.split(",").map((s) => parseInt(s.trim())).filter((n) => !isNaN(n));
+          onChange({ ...config, answerArray });
         }}
         size="small"
         placeholder="e.g. 2, 0, 3"
@@ -497,11 +497,11 @@ export default function SingleStepEditor({
         case "symbol_codex":
           if (cfg.symbols.length === 0) return "Symbol codex needs at least one symbol.";
           if (cfg.slotCount < 1) return "Symbol codex needs at least 1 slot.";
-          if (cfg.solution.length !== cfg.slotCount) return "Solution length must match slot count.";
+          if (cfg.answerArray.length !== cfg.slotCount) return "Answer array length must match slot count.";
           break;
         case "code_wheel":
           if (cfg.rings.length === 0) return "Code wheel needs at least one ring.";
-          if (cfg.solution.length !== cfg.rings.length) return "Solution length must match number of rings.";
+          if (cfg.answerArray.length !== cfg.rings.length) return "Answer array length must match number of rings.";
           break;
         case "jigsaw":
           if (!cfg.imagePath) return "Jigsaw needs a source image path.";

@@ -67,13 +67,13 @@ export type SymbolCodexConfig = {
   subtype: "symbol_codex";
   symbols: string[];
   slotCount: number;
-  solution: number[];
+  answerArray: number[];
 };
 
 export type CodeWheelConfig = {
   subtype: "code_wheel";
   rings: { symbols: string[] }[];
-  solution: number[];
+  answerArray: number[];
 };
 
 export type JigsawConfig = {
