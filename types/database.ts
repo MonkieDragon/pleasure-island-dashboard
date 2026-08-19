@@ -72,8 +72,6 @@ export type SymbolCodexConfig = {
 
 export type CodeWheelConfig = {
   subtype: "code_wheel";
-  rings: { symbols: string[] }[];
-  answerArray: number[];
 };
 
 export type JigsawConfig = {

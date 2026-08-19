@@ -11,7 +11,7 @@ import {
   type InteractiveConfig,
   type CameraOverlayConfig,
   type SymbolCodexConfig,
-  type CodeWheelConfig,
+
   type JigsawConfig,
 } from "@/types/database";
 import {
@@ -138,7 +138,7 @@ function InteractiveConfigEditor({
         onChange({ subtype: "symbol_codex", symbols: [], slotCount: 3, answerArray: [] });
         break;
       case "code_wheel":
-        onChange({ subtype: "code_wheel", rings: [{ symbols: [] }], answerArray: [0] });
+        onChange({ subtype: "code_wheel" });
         break;
       case "jigsaw":
         onChange({ subtype: "jigsaw", imagePath: "", gridSize: 3 });
@@ -171,7 +171,9 @@ function InteractiveConfigEditor({
         <SymbolCodexFields config={config} onChange={onChange} mobileInputProps={mobileInputProps} />
       )}
       {config.subtype === "code_wheel" && (
-        <CodeWheelFields config={config} onChange={onChange} mobileInputProps={mobileInputProps} />
+        <Typography variant="caption" color="text.secondary">
+          The cipher disk always uses A-Z (outer) and 1-26 (inner). Put the cipher key and encoded message in the content/hints fields. The decoded word goes in the Answer field above.
+        </Typography>
       )}
       {config.subtype === "jigsaw" && (
         <JigsawFields config={config} onChange={onChange} mobileInputProps={mobileInputProps} />
@@ -275,73 +277,7 @@ function SymbolCodexFields({
   );
 }
 
-function CodeWheelFields({
-  config,
-  onChange,
-  mobileInputProps,
-}: {
-  config: CodeWheelConfig;
-  onChange: (next: InteractiveConfig) => void;
-  mobileInputProps: Record<string, unknown>;
-}) {
-  const updateRing = (idx: number, symbols: string[]) => {
-    const rings = [...config.rings];
-    rings[idx] = { symbols };
-    onChange({ ...config, rings });
-  };
-
-  const addRing = () => {
-    const rings = [...config.rings, { symbols: [] }];
-    const answerArray = [...config.answerArray, 0];
-    onChange({ ...config, rings, answerArray });
-  };
-
-  const removeRing = (idx: number) => {
-    const rings = config.rings.filter((_, i) => i !== idx);
-    const answerArray = config.answerArray.filter((_, i) => i !== idx);
-    onChange({ ...config, rings: rings.length ? rings : [{ symbols: [] }], answerArray: answerArray.length ? answerArray : [0] });
-  };
-
-  return (
-    <>
-      {config.rings.map((ring, idx) => (
-        <Box key={idx} sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
-          <TextField
-            label={`Ring ${idx + 1} symbols (comma-separated)`}
-            value={ring.symbols.join(", ")}
-            onChange={(e) => {
-              const symbols = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-              updateRing(idx, symbols);
-            }}
-            size="small"
-            fullWidth
-            placeholder="A, B, C, D"
-            {...mobileInputProps}
-          />
-          {config.rings.length > 1 && (
-            <Button size="small" color="error" onClick={() => removeRing(idx)} sx={{ minWidth: 0, mt: 0.5 }}>
-              &times;
-            </Button>
-          )}
-        </Box>
-      ))}
-      <Button size="small" variant="outlined" onClick={addRing}>
-        Add ring
-      </Button>
-      <TextField
-        label="Answer array (comma-separated index per ring, 0-based)"
-        value={config.answerArray.join(", ")}
-        onChange={(e) => {
-          const answerArray = e.target.value.split(",").map((s) => parseInt(s.trim())).filter((n) => !isNaN(n));
-          onChange({ ...config, answerArray });
-        }}
-        size="small"
-        placeholder="e.g. 2, 0, 3"
-        {...mobileInputProps}
-      />
-    </>
-  );
-}
+// CodeWheelFields removed — cipher disk uses fixed A-Z / 1-26 rings; no config needed.
 
 function JigsawFields({
   config,
@@ -500,8 +436,7 @@ export default function SingleStepEditor({
           if (cfg.answerArray.length !== cfg.slotCount) return "Answer array length must match slot count.";
           break;
         case "code_wheel":
-          if (cfg.rings.length === 0) return "Code wheel needs at least one ring.";
-          if (cfg.answerArray.length !== cfg.rings.length) return "Answer array length must match number of rings.";
+          if (a === "") return "Code wheel needs an answer (the decoded word).";
           break;
         case "jigsaw":
           if (!cfg.imagePath) return "Jigsaw needs a source image path.";
@@ -563,7 +498,7 @@ export default function SingleStepEditor({
     isQuestion ||
     draft.type === "multiple_choice" ||
     draft.type === "qr" ||
-    (isInteractive && draft.interactiveConfig.subtype === "camera_overlay");
+    (isInteractive && (draft.interactiveConfig.subtype === "camera_overlay" || draft.interactiveConfig.subtype === "code_wheel"));
 
   const mobileInputProps = compactMobile
     ? ({ inputProps: { style: { fontSize: 16 } } } as const)
