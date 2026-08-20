@@ -2007,9 +2007,19 @@ export default function Dashboard() {
                     display: "flex",
                     flexDirection: "column",
                     minHeight: 0,
+                    overflow: "hidden",
                   }}
                 >
-                  {renderEditors(false)}
+                  <Box
+                    sx={{
+                      flex: 1,
+                      minHeight: 0,
+                      overflowY: "auto",
+                      overflowX: "hidden",
+                    }}
+                  >
+                    {renderEditors(false)}
+                  </Box>
                 </Box>
               ) : null}
             </Box>
