@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   PuzzleStep,
   PuzzleStepType,
@@ -481,6 +481,13 @@ function CameraOverlayFields({
   );
 }
 
+function parseAnswerArrayText(text: string): number[] {
+  return text
+    .split(",")
+    .map((s) => parseInt(s.trim(), 10))
+    .filter((n) => !Number.isNaN(n));
+}
+
 function SymbolCodexFields({
   config,
   onChange,
@@ -498,6 +505,17 @@ function SymbolCodexFields({
   onUploadSymbolFiles: (files: File[]) => Promise<void> | void;
   onRemoveSymbolAtIndex: (symbolIndex: number) => Promise<void> | void;
 }) {
+  // Keep raw text while typing so trailing commas/spaces are not stripped by join().
+  const [answerText, setAnswerText] = useState(() => config.answerArray.join(", "));
+  const lastPushedSerialized = useRef(config.answerArray.join(","));
+
+  useEffect(() => {
+    const serialized = config.answerArray.join(",");
+    if (serialized === lastPushedSerialized.current) return;
+    lastPushedSerialized.current = serialized;
+    setAnswerText(config.answerArray.join(", "));
+  }, [config.answerArray]);
+
   return (
     <>
       <Box>
@@ -596,12 +614,12 @@ function SymbolCodexFields({
       />
       <TextField
         label="Answer array (comma-separated symbol indices, 0-based)"
-        value={config.answerArray.join(", ")}
+        value={answerText}
         onChange={(e) => {
-          const answerArray = e.target.value
-            .split(",")
-            .map((s) => parseInt(s.trim()))
-            .filter((n) => !isNaN(n));
+          const text = e.target.value;
+          const answerArray = parseAnswerArrayText(text);
+          lastPushedSerialized.current = answerArray.join(",");
+          setAnswerText(text);
           onChange({ ...config, answerArray });
         }}
         size="small"
