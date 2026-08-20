@@ -36,7 +36,9 @@ type Draft = {
   content: string;
   notes: string;
   answerText: string;
-  multipleChoiceOptionsText: string;
+  incorrectOption1Text: string;
+  incorrectOption2Text: string;
+  incorrectOption3Text: string;
   latText: string;
   lngText: string;
   interactiveSubtype: InteractiveSubtype;
@@ -52,17 +54,20 @@ type Props = {
   onDeleteStep: (stepId: string) => Promise<void> | void;
   onSetImage: (input: { stepId: string; file: File }) => Promise<void> | void;
   onRemoveImage: (input: { stepId: string }) => Promise<void> | void;
+  onSetOverlayImage: (input: { stepId: string; file: File }) => Promise<void> | void;
+  onRemoveOverlayImage: (input: { stepId: string }) => Promise<void> | void;
+  onUploadSymbolImages: (input: {
+    stepId: string;
+    files: File[];
+  }) => Promise<void> | void;
+  onRemoveSymbolImage: (input: {
+    stepId: string;
+    symbolIndex: number;
+  }) => Promise<void> | void;
   getImageUrl: (path: string) => string;
   /** Larger inputs + scroll focused field into view (mobile editor panel). */
   compactMobile?: boolean;
 };
-
-function toLines(input: string): string[] {
-  return input
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
 
 function parseOptionalNumber(input: string): number | null {
   const t = input.trim();
@@ -90,14 +95,37 @@ function parseInteractiveConfig(raw: unknown): InteractiveConfig {
   return DEFAULT_INTERACTIVE_CONFIG;
 }
 
+function incorrectOptionsFromStep(
+  options: string[] | null,
+  answer: string | null,
+): Pick<Draft, "incorrectOption1Text" | "incorrectOption2Text" | "incorrectOption3Text"> {
+  if (!Array.isArray(options)) {
+    return {
+      incorrectOption1Text: "",
+      incorrectOption2Text: "",
+      incorrectOption3Text: "",
+    };
+  }
+
+  const answerText = answer == null ? "" : String(answer);
+  const remaining = [...options];
+  if (answerText !== "") {
+    const idx = remaining.indexOf(answerText);
+    if (idx >= 0) remaining.splice(idx, 1);
+  }
+
+  return {
+    incorrectOption1Text: remaining[0] ?? "",
+    incorrectOption2Text: remaining[1] ?? "",
+    incorrectOption3Text: remaining[2] ?? "",
+  };
+}
+
 function toDraft(step: PuzzleStep): Draft {
   const type: PuzzleStepType = isPuzzleStepType(step.type) ? step.type : "text";
   const rawAnswer = step.answer;
 
   const answerText = rawAnswer == null ? "" : String(rawAnswer);
-  const optionsText = Array.isArray(step.multiple_choice_options)
-    ? step.multiple_choice_options.join("\n")
-    : "";
 
   const config = parseInteractiveConfig(step.config);
 
@@ -106,7 +134,7 @@ function toDraft(step: PuzzleStep): Draft {
     content: step.content ?? "",
     notes: step.notes ?? "",
     answerText,
-    multipleChoiceOptionsText: optionsText,
+    ...incorrectOptionsFromStep(step.multiple_choice_options, step.answer),
     latText: step.latitude == null ? "" : String(step.latitude),
     lngText: step.longitude == null ? "" : String(step.longitude),
     interactiveSubtype: config.subtype,
@@ -123,16 +151,32 @@ function InteractiveConfigEditor({
   answerError,
   onChange,
   mobileInputProps,
+  overlayImagePath,
+  getImageUrl,
+  onPickOverlayFile,
+  onRemoveOverlayImage,
+  onUploadSymbolFiles,
+  onRemoveSymbolAtIndex,
 }: {
   config: InteractiveConfig;
   answerError: string | null;
   onChange: (next: InteractiveConfig) => void;
   mobileInputProps: Record<string, unknown>;
+  overlayImagePath: string | null;
+  getImageUrl: (path: string) => string;
+  onPickOverlayFile: (file: File) => Promise<void> | void;
+  onRemoveOverlayImage: () => void;
+  onUploadSymbolFiles: (files: File[]) => Promise<void> | void;
+  onRemoveSymbolAtIndex: (symbolIndex: number) => Promise<void> | void;
 }) {
   const setSubtype = (subtype: InteractiveSubtype) => {
     switch (subtype) {
       case "camera_overlay":
-        onChange({ subtype: "camera_overlay", overlayImagePath: "", overlayOpacity: 0.5 });
+        onChange({
+          subtype: "camera_overlay",
+          overlayImagePath: overlayImagePath ?? "",
+          overlayOpacity: 0.5,
+        });
         break;
       case "symbol_codex":
         onChange({ subtype: "symbol_codex", symbols: [], slotCount: 3, answerArray: [] });
@@ -165,10 +209,24 @@ function InteractiveConfigEditor({
       </FormControl>
 
       {config.subtype === "camera_overlay" && (
-        <CameraOverlayFields config={config} onChange={onChange} mobileInputProps={mobileInputProps} />
+        <CameraOverlayFields
+          config={config}
+          onChange={onChange}
+          overlayImagePath={overlayImagePath}
+          getImageUrl={getImageUrl}
+          onPickOverlayFile={onPickOverlayFile}
+          onRemoveOverlayImage={onRemoveOverlayImage}
+        />
       )}
       {config.subtype === "symbol_codex" && (
-        <SymbolCodexFields config={config} onChange={onChange} mobileInputProps={mobileInputProps} />
+        <SymbolCodexFields
+          config={config}
+          onChange={onChange}
+          mobileInputProps={mobileInputProps}
+          getImageUrl={getImageUrl}
+          onUploadSymbolFiles={onUploadSymbolFiles}
+          onRemoveSymbolAtIndex={onRemoveSymbolAtIndex}
+        />
       )}
       {config.subtype === "code_wheel" && (
         <Typography variant="caption" color="text.secondary">
@@ -187,23 +245,83 @@ function InteractiveConfigEditor({
 function CameraOverlayFields({
   config,
   onChange,
-  mobileInputProps,
+  overlayImagePath,
+  getImageUrl,
+  onPickOverlayFile,
+  onRemoveOverlayImage,
 }: {
   config: CameraOverlayConfig;
   onChange: (next: InteractiveConfig) => void;
-  mobileInputProps: Record<string, unknown>;
+  overlayImagePath: string | null;
+  getImageUrl: (path: string) => string;
+  onPickOverlayFile: (file: File) => Promise<void> | void;
+  onRemoveOverlayImage: () => void;
 }) {
   return (
     <>
-      <TextField
-        label="Overlay image path (Supabase storage)"
-        value={config.overlayImagePath}
-        onChange={(e) => onChange({ ...config, overlayImagePath: e.target.value })}
-        size="small"
-        fullWidth
-        placeholder="e.g. overlays/skyline-cebu.png"
-        {...mobileInputProps}
-      />
+      <Box>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          Overlay image
+        </Typography>
+        <Stack spacing={1}>
+          {overlayImagePath ? (
+            <Box
+              sx={{
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 1,
+                p: 1,
+              }}
+            >
+              <Box
+                component="img"
+                src={getImageUrl(overlayImagePath)}
+                alt="Camera overlay"
+                sx={{
+                  width: "100%",
+                  maxHeight: 180,
+                  objectFit: "contain",
+                  borderRadius: 1,
+                  mb: 1,
+                  bgcolor: "action.hover",
+                }}
+              />
+              <Button
+                size="small"
+                color="error"
+                variant="text"
+                onClick={() => {
+                  void onRemoveOverlayImage();
+                }}
+              >
+                Remove overlay image
+              </Button>
+            </Box>
+          ) : (
+            <Typography variant="caption" color="text.secondary">
+              No overlay image yet.
+            </Typography>
+          )}
+
+          <Button component="label" variant="outlined" size="small">
+            {overlayImagePath ? "Replace overlay image" : "Upload overlay image"}
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                await onPickOverlayFile(file);
+              }}
+            />
+          </Button>
+          <Typography variant="caption" color="text.secondary">
+            Recommended: 1200×900 PNG, 4:3 aspect ratio (with transparency).
+          </Typography>
+        </Stack>
+      </Box>
       <Box>
         <Typography variant="caption" gutterBottom>
           Overlay opacity: {config.overlayOpacity ?? 0.5}
@@ -228,26 +346,101 @@ function SymbolCodexFields({
   config,
   onChange,
   mobileInputProps,
+  getImageUrl,
+  onUploadSymbolFiles,
+  onRemoveSymbolAtIndex,
 }: {
   config: SymbolCodexConfig;
   onChange: (next: InteractiveConfig) => void;
   mobileInputProps: Record<string, unknown>;
+  getImageUrl: (path: string) => string;
+  onUploadSymbolFiles: (files: File[]) => Promise<void> | void;
+  onRemoveSymbolAtIndex: (symbolIndex: number) => Promise<void> | void;
 }) {
   return (
     <>
-      <TextField
-        label="Symbols (one per line, image path or key)"
-        value={config.symbols.join("\n")}
-        onChange={(e) => {
-          const symbols = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean);
-          onChange({ ...config, symbols });
-        }}
-        multiline
-        minRows={3}
-        size="small"
-        placeholder={"symbol-a\nsymbol-b\nsymbol-c"}
-        {...mobileInputProps}
-      />
+      <Box>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          Symbols
+        </Typography>
+        <Stack spacing={1}>
+          {config.symbols.length === 0 ? (
+            <Typography variant="caption" color="text.secondary">
+              No symbols yet. Upload PNG icons (transparent background recommended).
+            </Typography>
+          ) : (
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(88px, 1fr))",
+                gap: 1,
+              }}
+            >
+              {config.symbols.map((path, idx) => (
+                <Box
+                  key={`${path}-${idx}`}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 1,
+                    p: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 0.5,
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    [{idx}]
+                  </Typography>
+                  <Box
+                    component="img"
+                    src={getImageUrl(path)}
+                    alt={`Symbol ${idx}`}
+                    sx={{
+                      width: 64,
+                      height: 64,
+                      objectFit: "contain",
+                      bgcolor: "action.hover",
+                      borderRadius: 1,
+                    }}
+                  />
+                  <Button
+                    size="small"
+                    color="error"
+                    variant="text"
+                    onClick={() => {
+                      void onRemoveSymbolAtIndex(idx);
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </Box>
+              ))}
+            </Box>
+          )}
+
+          <Button component="label" variant="outlined" size="small">
+            Upload symbol images
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={async (e) => {
+                const files = Array.from(e.target.files ?? []);
+                e.target.value = "";
+                if (files.length === 0) return;
+                await onUploadSymbolFiles(files);
+              }}
+            />
+          </Button>
+          <Typography variant="caption" color="text.secondary">
+            Recommended: square transparent PNG (e.g. 256×256 or 512×512). Indices are
+            0-based and used by the answer array.
+          </Typography>
+        </Stack>
+      </Box>
       <TextField
         label="Number of slots"
         type="number"
@@ -327,6 +520,10 @@ export default function SingleStepEditor({
   onDeleteStep,
   onSetImage,
   onRemoveImage,
+  onSetOverlayImage,
+  onRemoveOverlayImage,
+  onUploadSymbolImages,
+  onRemoveSymbolImage,
   getImageUrl,
   compactMobile = false,
 }: Props) {
@@ -369,6 +566,64 @@ export default function SingleStepEditor({
     });
   }, [step]);
 
+  // Keep camera overlay path in sync after immediate upload/remove.
+  useEffect(() => {
+    if (!step) return;
+    const saved = parseInteractiveConfig(step.config);
+    const savedPath =
+      saved.subtype === "camera_overlay" ? saved.overlayImagePath : "";
+    queueMicrotask(() => {
+      setDraftByStepId((prev) => {
+        const existing = prev[step.id];
+        if (!existing) return prev;
+        if (existing.interactiveConfig.subtype !== "camera_overlay") return prev;
+        const cfg = existing.interactiveConfig;
+        if (cfg.overlayImagePath === savedPath) return prev;
+        return {
+          ...prev,
+          [step.id]: {
+            ...existing,
+            interactiveConfig: { ...cfg, overlayImagePath: savedPath },
+          },
+        };
+      });
+    });
+  }, [step]);
+
+  // Keep symbol_codex symbols/answerArray in sync after immediate upload/remove.
+  useEffect(() => {
+    if (!step) return;
+    const saved = parseInteractiveConfig(step.config);
+    if (saved.subtype !== "symbol_codex") return;
+    const savedSymbols = saved.symbols;
+    const savedAnswerArray = saved.answerArray;
+    queueMicrotask(() => {
+      setDraftByStepId((prev) => {
+        const existing = prev[step.id];
+        if (!existing) return prev;
+        if (existing.interactiveConfig.subtype !== "symbol_codex") return prev;
+        const cfg = existing.interactiveConfig;
+        if (
+          JSON.stringify(cfg.symbols) === JSON.stringify(savedSymbols) &&
+          JSON.stringify(cfg.answerArray) === JSON.stringify(savedAnswerArray)
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [step.id]: {
+            ...existing,
+            interactiveConfig: {
+              ...cfg,
+              symbols: savedSymbols,
+              answerArray: savedAnswerArray,
+            },
+          },
+        };
+      });
+    });
+  }, [step]);
+
   useEffect(() => {
     queueMicrotask(() => {
       setAnswerError(null);
@@ -384,7 +639,9 @@ export default function SingleStepEditor({
       base.content !== draft.content ||
       base.notes !== draft.notes ||
       base.answerText !== draft.answerText ||
-      base.multipleChoiceOptionsText !== draft.multipleChoiceOptionsText ||
+      base.incorrectOption1Text !== draft.incorrectOption1Text ||
+      base.incorrectOption2Text !== draft.incorrectOption2Text ||
+      base.incorrectOption3Text !== draft.incorrectOption3Text ||
       (draft.type === "interactive" &&
         JSON.stringify(base.interactiveConfig) !== JSON.stringify(draft.interactiveConfig))
     );
@@ -418,16 +675,21 @@ export default function SingleStepEditor({
       if (a === "") return "QR steps need a QR payload.";
     }
     if (draft.type === "multiple_choice") {
-      const options = toLines(draft.multipleChoiceOptionsText);
-      if (options.length !== 4) return "Multiple choice steps need exactly 4 options.";
       if (a === "") return "Multiple choice steps need a correct answer.";
-      if (!options.includes(a)) return "Correct answer must match one of the options exactly.";
+      const incorrect = [
+        draft.incorrectOption1Text.trim(),
+        draft.incorrectOption2Text.trim(),
+        draft.incorrectOption3Text.trim(),
+      ];
+      if (incorrect.some((option) => option === "")) {
+        return "Multiple choice steps need 3 incorrect options.";
+      }
     }
     if (draft.type === "interactive") {
       const cfg = draft.interactiveConfig;
       switch (cfg.subtype) {
         case "camera_overlay":
-          if (!cfg.overlayImagePath) return "Camera overlay needs an overlay image path.";
+          if (!cfg.overlayImagePath) return "Camera overlay needs an overlay image.";
           if (a === "") return "Camera overlay needs an answer.";
           break;
         case "symbol_codex":
@@ -457,10 +719,12 @@ export default function SingleStepEditor({
     const answer = draft.type === "info" ? null : trimmedAnswer === "" ? null : trimmedAnswer;
     const multiple_choice_options =
       draft.type === "multiple_choice"
-        ? (() => {
-            const lines = toLines(draft.multipleChoiceOptionsText);
-            return lines.length ? lines : null;
-          })()
+        ? [
+            trimmedAnswer,
+            draft.incorrectOption1Text.trim(),
+            draft.incorrectOption2Text.trim(),
+            draft.incorrectOption3Text.trim(),
+          ]
         : null;
 
     const config = draft.type === "interactive" ? draft.interactiveConfig : null;
@@ -492,6 +756,12 @@ export default function SingleStepEditor({
   }
 
   const stepImagePath = step.image_path || null;
+  const savedInteractiveConfig = parseInteractiveConfig(step.config);
+  const overlayImagePath =
+    savedInteractiveConfig.subtype === "camera_overlay" &&
+    savedInteractiveConfig.overlayImagePath
+      ? savedInteractiveConfig.overlayImagePath
+      : null;
   const isQuestion = isQuestionStepType(draft.type);
   const isInteractive = draft.type === "interactive";
   const showAnswerRow =
@@ -600,24 +870,48 @@ export default function SingleStepEditor({
                 />
               )}
             </Box>
-            {!!answerError &&
-              (isQuestion || draft.type === "qr" || draft.type === "multiple_choice") && (
-                <FormHelperText>{answerError}</FormHelperText>
-              )}
+            {!!answerError && (isQuestion || draft.type === "qr") && (
+              <FormHelperText>{answerError}</FormHelperText>
+            )}
           </FormControl>
         )}
 
         {draft.type === "multiple_choice" && (
-          <TextField
-            label="Multiple choice options (exactly 4, one per line)"
-            value={draft.multipleChoiceOptionsText}
-            onChange={(e) => setDraft({ multipleChoiceOptionsText: e.target.value })}
-            placeholder={"Option A\nOption B\nOption C"}
-            multiline
-            minRows={4}
-            size="small"
-            {...mobileInputProps}
-          />
+          <FormControl size="small" fullWidth error={!!answerError}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Incorrect options
+            </Typography>
+            <Stack spacing={1}>
+              <TextField
+                value={draft.incorrectOption1Text}
+                onChange={(e) => setDraft({ incorrectOption1Text: e.target.value })}
+                placeholder="Option A"
+                size="small"
+                fullWidth
+                error={!!answerError}
+                {...mobileInputProps}
+              />
+              <TextField
+                value={draft.incorrectOption2Text}
+                onChange={(e) => setDraft({ incorrectOption2Text: e.target.value })}
+                placeholder="Option B"
+                size="small"
+                fullWidth
+                error={!!answerError}
+                {...mobileInputProps}
+              />
+              <TextField
+                value={draft.incorrectOption3Text}
+                onChange={(e) => setDraft({ incorrectOption3Text: e.target.value })}
+                placeholder="Option C"
+                size="small"
+                fullWidth
+                error={!!answerError}
+                {...mobileInputProps}
+              />
+            </Stack>
+            {!!answerError && <FormHelperText>{answerError}</FormHelperText>}
+          </FormControl>
         )}
 
         {isInteractive && (
@@ -631,6 +925,20 @@ export default function SingleStepEditor({
               })
             }
             mobileInputProps={mobileInputProps}
+            overlayImagePath={overlayImagePath}
+            getImageUrl={getImageUrl}
+            onPickOverlayFile={async (file) => {
+              await onSetOverlayImage({ stepId: step.id, file });
+            }}
+            onRemoveOverlayImage={() => {
+              void onRemoveOverlayImage({ stepId: step.id });
+            }}
+            onUploadSymbolFiles={async (files) => {
+              await onUploadSymbolImages({ stepId: step.id, files });
+            }}
+            onRemoveSymbolAtIndex={async (symbolIndex) => {
+              await onRemoveSymbolImage({ stepId: step.id, symbolIndex });
+            }}
           />
         )}
 

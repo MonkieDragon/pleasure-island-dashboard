@@ -11,7 +11,15 @@ import {
   normalizeCountryId,
   type Country,
 } from "@/lib/countries";
-import { PuzzleChain, PuzzleStep, Region, Treasure } from "@/types/database";
+import {
+  PuzzleChain,
+  PuzzleStep,
+  Region,
+  Treasure,
+  type CameraOverlayConfig,
+  type InteractiveConfig,
+  type SymbolCodexConfig,
+} from "@/types/database";
 import type { MapHover } from "@/types/mapUi";
 
 import Sidebar from "./Sidebar";
@@ -621,6 +629,170 @@ export default function Dashboard() {
       await supabase.storage.from("images").remove([step.image_path]);
     }
     await updateStep({ ...step, image_path: null });
+  };
+
+  const cameraOverlayConfigFromStep = (step: PuzzleStep): CameraOverlayConfig => {
+    const raw = step.config;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const obj = raw as Record<string, unknown>;
+      if (obj.subtype === "camera_overlay") {
+        return {
+          subtype: "camera_overlay",
+          overlayImagePath:
+            typeof obj.overlayImagePath === "string" ? obj.overlayImagePath : "",
+          overlayOpacity:
+            typeof obj.overlayOpacity === "number" ? obj.overlayOpacity : 0.5,
+        };
+      }
+    }
+    return {
+      subtype: "camera_overlay",
+      overlayImagePath: "",
+      overlayOpacity: 0.5,
+    };
+  };
+
+  const setStepOverlayImage = async (input: { stepId: string; file: File }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step) return;
+
+    const prevConfig = cameraOverlayConfigFromStep(step);
+    const prevPath = prevConfig.overlayImagePath || null;
+
+    const ext =
+      input.file.name && input.file.name.includes(".")
+        ? input.file.name.split(".").pop()
+        : "png";
+    const objectPath = `overlays/${step.id}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("images")
+      .upload(objectPath, input.file, { upsert: true });
+    if (uploadError) throw new Error(formatSupabaseError(uploadError));
+
+    if (prevPath && prevPath !== objectPath) {
+      await supabase.storage.from("images").remove([prevPath]);
+    }
+
+    const nextConfig: InteractiveConfig = {
+      ...prevConfig,
+      overlayImagePath: objectPath,
+    };
+    await updateStep({ ...step, config: nextConfig });
+  };
+
+  const removeStepOverlayImage = async (input: { stepId: string }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step) return;
+
+    const prevConfig = cameraOverlayConfigFromStep(step);
+    if (prevConfig.overlayImagePath) {
+      await supabase.storage.from("images").remove([prevConfig.overlayImagePath]);
+    }
+
+    const nextConfig: InteractiveConfig = {
+      ...prevConfig,
+      overlayImagePath: "",
+    };
+    await updateStep({ ...step, config: nextConfig });
+  };
+
+  const symbolCodexConfigFromStep = (step: PuzzleStep): SymbolCodexConfig => {
+    const raw = step.config;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const obj = raw as Record<string, unknown>;
+      if (obj.subtype === "symbol_codex") {
+        const symbols = Array.isArray(obj.symbols)
+          ? obj.symbols.filter((x): x is string => typeof x === "string")
+          : [];
+        const slotCount =
+          typeof obj.slotCount === "number" && obj.slotCount >= 1
+            ? obj.slotCount
+            : 3;
+        const answerArray = Array.isArray(obj.answerArray)
+          ? obj.answerArray.filter((x): x is number => typeof x === "number")
+          : [];
+        return {
+          subtype: "symbol_codex",
+          symbols,
+          slotCount,
+          answerArray,
+        };
+      }
+    }
+    return {
+      subtype: "symbol_codex",
+      symbols: [],
+      slotCount: 3,
+      answerArray: [],
+    };
+  };
+
+  const uploadSymbolImages = async (input: {
+    stepId: string;
+    files: File[];
+  }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step || input.files.length === 0) return;
+
+    const prevConfig = symbolCodexConfigFromStep(step);
+    const nextSymbols = [...prevConfig.symbols];
+
+    for (const file of input.files) {
+      const ext =
+        file.name && file.name.includes(".")
+          ? file.name.split(".").pop()
+          : "png";
+      const index = nextSymbols.length;
+      const objectPath = `symbols/${step.id}/${index}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("images")
+        .upload(objectPath, file, { upsert: true });
+      if (uploadError) throw new Error(formatSupabaseError(uploadError));
+
+      nextSymbols.push(objectPath);
+    }
+
+    const nextConfig: SymbolCodexConfig = {
+      ...prevConfig,
+      symbols: nextSymbols,
+    };
+    await updateStep({ ...step, config: nextConfig });
+  };
+
+  const removeSymbolImage = async (input: {
+    stepId: string;
+    symbolIndex: number;
+  }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step) return;
+
+    const prevConfig = symbolCodexConfigFromStep(step);
+    const i = input.symbolIndex;
+    if (i < 0 || i >= prevConfig.symbols.length) return;
+
+    const removedPath = prevConfig.symbols[i];
+    if (removedPath) {
+      await supabase.storage.from("images").remove([removedPath]);
+    }
+
+    const nextSymbols = prevConfig.symbols.filter((_, idx) => idx !== i);
+    const nextAnswerArray =
+      nextSymbols.length === 0
+        ? prevConfig.answerArray.map(() => 0)
+        : prevConfig.answerArray.map((idx) => {
+            if (idx < i) return idx;
+            if (idx > i) return idx - 1;
+            return Math.min(i, nextSymbols.length - 1);
+          });
+
+    const nextConfig: SymbolCodexConfig = {
+      ...prevConfig,
+      symbols: nextSymbols,
+      answerArray: nextAnswerArray,
+    };
+    await updateStep({ ...step, config: nextConfig });
   };
 
   const reorderSteps = async (orderedStepIds: string[]) => {
@@ -1393,6 +1565,10 @@ export default function Dashboard() {
         onDeleteStep={deleteStep}
         onSetImage={setStepImage}
         onRemoveImage={removeStepImage}
+        onSetOverlayImage={setStepOverlayImage}
+        onRemoveOverlayImage={removeStepOverlayImage}
+        onUploadSymbolImages={uploadSymbolImages}
+        onRemoveSymbolImage={removeSymbolImage}
         getImageUrl={getImageUrl}
         compactMobile={compactMobile}
       />

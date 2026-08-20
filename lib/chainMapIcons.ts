@@ -31,7 +31,10 @@ export function pickChainIcon(input: {
 }): L.DivIcon {
   const size = input.optional ? 28 : 36;
   const fill = input.optional ? COLOR_OPTIONAL : COLOR_MAIN;
-  const opacity = input.readyToPublish ? 1 : 0.5;
+  // Keep drafts visible: do not dim with opacity. Instead apply grayscale styling only.
+  const opacity = 1;
+  const isDraft = !input.readyToPublish;
+  const shouldGray = isDraft && !input.selected && !input.hovered;
   const stroke = input.selected
     ? COLOR_STROKE_SELECTED
     : input.hovered
@@ -45,7 +48,10 @@ export function pickChainIcon(input: {
     : attractionSvg(fill, stroke, strokeWidth);
 
   const outer = Math.round(size * scale);
-  const html = `<div style="width:${outer}px;height:${outer}px;opacity:${opacity};filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));line-height:0;">${glyph}</div>`;
+  const filter = shouldGray
+    ? "drop-shadow(0 1px 2px rgba(0,0,0,.35)) grayscale(1)"
+    : "drop-shadow(0 1px 2px rgba(0,0,0,.35))";
+  const html = `<div style="width:${outer}px;height:${outer}px;opacity:${opacity};filter:${filter};line-height:0;">${glyph}</div>`;
 
   return L.divIcon({
     className: "chain-map-icon",
