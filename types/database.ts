@@ -57,9 +57,46 @@ export const INTERACTIVE_SUBTYPE_LABELS: Record<InteractiveSubtype, string> = {
   jigsaw: "Jigsaw",
 };
 
+export type StepHint = {
+  text: string;
+  delaySeconds: number;
+  image?: string;
+};
+
+export function parseStepHint(raw: unknown): StepHint | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const entry = raw[0];
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+  const obj = entry as Record<string, unknown>;
+  const text = typeof obj.text === "string" ? obj.text : "";
+  const delaySeconds =
+    typeof obj.delaySeconds === "number" && obj.delaySeconds >= 0
+      ? obj.delaySeconds
+      : 30;
+  const image = typeof obj.image === "string" && obj.image.trim() !== "" ? obj.image : undefined;
+  if (text.trim() === "" && !image) return null;
+  return { text, delaySeconds, image };
+}
+
+export function serializeStepHint(input: {
+  text: string;
+  delaySeconds: number;
+  imagePath?: string | null;
+}): StepHint[] | null {
+  const text = input.text.trim();
+  const image = input.imagePath?.trim() || undefined;
+  if (text === "" && !image) return null;
+  const delaySeconds =
+    Number.isFinite(input.delaySeconds) && input.delaySeconds >= 0
+      ? input.delaySeconds
+      : 30;
+  return [{ text, delaySeconds, ...(image ? { image } : {}) }];
+}
+
 export type CameraOverlayConfig = {
   subtype: "camera_overlay";
   overlayImagePath: string;
+  referenceImagePath?: string;
   overlayOpacity?: number;
 };
 

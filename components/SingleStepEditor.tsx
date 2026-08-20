@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   PuzzleStep,
   PuzzleStepType,
@@ -7,6 +7,8 @@ import {
   isInteractiveSubtype,
   INTERACTIVE_SUBTYPES,
   INTERACTIVE_SUBTYPE_LABELS,
+  parseStepHint,
+  serializeStepHint,
   type InteractiveSubtype,
   type InteractiveConfig,
   type CameraOverlayConfig,
@@ -15,6 +17,9 @@ import {
   type JigsawConfig,
 } from "@/types/database";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Checkbox,
@@ -30,6 +35,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 type Draft = {
   type: PuzzleStepType;
@@ -41,9 +47,13 @@ type Draft = {
   incorrectOption3Text: string;
   latText: string;
   lngText: string;
+  hintText: string;
+  hintDelaySecondsText: string;
   interactiveSubtype: InteractiveSubtype;
   interactiveConfig: InteractiveConfig;
 };
+
+type EditorSection = "content" | "playerImage" | "hints" | "notes" | "location";
 
 type Props = {
   step: PuzzleStep | null;
@@ -56,6 +66,10 @@ type Props = {
   onRemoveImage: (input: { stepId: string }) => Promise<void> | void;
   onSetOverlayImage: (input: { stepId: string; file: File }) => Promise<void> | void;
   onRemoveOverlayImage: (input: { stepId: string }) => Promise<void> | void;
+  onSetOverlayReferenceImage: (input: { stepId: string; file: File }) => Promise<void> | void;
+  onRemoveOverlayReferenceImage: (input: { stepId: string }) => Promise<void> | void;
+  onSetHintImage: (input: { stepId: string; file: File }) => Promise<void> | void;
+  onRemoveHintImage: (input: { stepId: string }) => Promise<void> | void;
   onUploadSymbolImages: (input: {
     stepId: string;
     files: File[];
@@ -128,6 +142,7 @@ function toDraft(step: PuzzleStep): Draft {
   const answerText = rawAnswer == null ? "" : String(rawAnswer);
 
   const config = parseInteractiveConfig(step.config);
+  const hint = parseStepHint(step.hints);
 
   return {
     type,
@@ -137,9 +152,143 @@ function toDraft(step: PuzzleStep): Draft {
     ...incorrectOptionsFromStep(step.multiple_choice_options, step.answer),
     latText: step.latitude == null ? "" : String(step.latitude),
     lngText: step.longitude == null ? "" : String(step.longitude),
+    hintText: hint?.text ?? "",
+    hintDelaySecondsText: hint ? String(hint.delaySeconds) : "30",
     interactiveSubtype: config.subtype,
     interactiveConfig: config,
   };
+}
+
+function ImageUploadBlock({
+  label,
+  imagePath,
+  getImageUrl,
+  emptyLabel,
+  uploadLabel,
+  replaceLabel,
+  removeLabel,
+  caption,
+  objectFit = "cover",
+  onPickFile,
+  onRemove,
+}: {
+  label: string;
+  imagePath: string | null;
+  getImageUrl: (path: string) => string;
+  emptyLabel: string;
+  uploadLabel: string;
+  replaceLabel: string;
+  removeLabel: string;
+  caption?: string;
+  objectFit?: "cover" | "contain";
+  onPickFile: (file: File) => Promise<void> | void;
+  onRemove: () => void;
+}) {
+  return (
+    <Box>
+      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        {label}
+      </Typography>
+      <Stack spacing={1}>
+        {imagePath ? (
+          <Box
+            sx={{
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: 1,
+              p: 1,
+            }}
+          >
+            <Box
+              component="img"
+              src={getImageUrl(imagePath)}
+              alt={label}
+              sx={{
+                width: "100%",
+                maxHeight: 180,
+                objectFit,
+                borderRadius: 1,
+                mb: 1,
+                ...(objectFit === "contain" ? { bgcolor: "action.hover" } : {}),
+              }}
+            />
+            <Button size="small" color="error" variant="text" onClick={() => void onRemove()}>
+              {removeLabel}
+            </Button>
+          </Box>
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            {emptyLabel}
+          </Typography>
+        )}
+
+        <Button component="label" variant="outlined" size="small">
+          {imagePath ? replaceLabel : uploadLabel}
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              await onPickFile(file);
+            }}
+          />
+        </Button>
+        {caption ? (
+          <Typography variant="caption" color="text.secondary">
+            {caption}
+          </Typography>
+        ) : null}
+      </Stack>
+    </Box>
+  );
+}
+
+function EditorAccordion({
+  section,
+  expandedSection,
+  onExpand,
+  title,
+  subtitle,
+  children,
+}: {
+  section: EditorSection;
+  expandedSection: EditorSection | false;
+  onExpand: (section: EditorSection | false) => void;
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Accordion
+      expanded={expandedSection === section}
+      onChange={(_, expanded) => onExpand(expanded ? section : false)}
+      disableGutters
+      sx={{
+        "&:before": { display: "none" },
+        boxShadow: "none",
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: 1,
+        mb: 1,
+        "&.Mui-expanded": { mb: 1 },
+      }}
+    >
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="subtitle2">{title}</Typography>
+          {subtitle && expandedSection !== section ? (
+            <Typography variant="caption" color="text.secondary" noWrap>
+              {subtitle}
+            </Typography>
+          ) : null}
+        </Box>
+      </AccordionSummary>
+      <AccordionDetails sx={{ pt: 0 }}>{children}</AccordionDetails>
+    </Accordion>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -152,9 +301,12 @@ function InteractiveConfigEditor({
   onChange,
   mobileInputProps,
   overlayImagePath,
+  referenceImagePath,
   getImageUrl,
   onPickOverlayFile,
   onRemoveOverlayImage,
+  onPickReferenceFile,
+  onRemoveReferenceImage,
   onUploadSymbolFiles,
   onRemoveSymbolAtIndex,
 }: {
@@ -163,9 +315,12 @@ function InteractiveConfigEditor({
   onChange: (next: InteractiveConfig) => void;
   mobileInputProps: Record<string, unknown>;
   overlayImagePath: string | null;
+  referenceImagePath: string | null;
   getImageUrl: (path: string) => string;
   onPickOverlayFile: (file: File) => Promise<void> | void;
   onRemoveOverlayImage: () => void;
+  onPickReferenceFile: (file: File) => Promise<void> | void;
+  onRemoveReferenceImage: () => void;
   onUploadSymbolFiles: (files: File[]) => Promise<void> | void;
   onRemoveSymbolAtIndex: (symbolIndex: number) => Promise<void> | void;
 }) {
@@ -175,6 +330,7 @@ function InteractiveConfigEditor({
         onChange({
           subtype: "camera_overlay",
           overlayImagePath: overlayImagePath ?? "",
+          referenceImagePath: referenceImagePath ?? undefined,
           overlayOpacity: 0.5,
         });
         break;
@@ -213,9 +369,12 @@ function InteractiveConfigEditor({
           config={config}
           onChange={onChange}
           overlayImagePath={overlayImagePath}
+          referenceImagePath={referenceImagePath}
           getImageUrl={getImageUrl}
           onPickOverlayFile={onPickOverlayFile}
           onRemoveOverlayImage={onRemoveOverlayImage}
+          onPickReferenceFile={onPickReferenceFile}
+          onRemoveReferenceImage={onRemoveReferenceImage}
         />
       )}
       {config.subtype === "symbol_codex" && (
@@ -246,82 +405,51 @@ function CameraOverlayFields({
   config,
   onChange,
   overlayImagePath,
+  referenceImagePath,
   getImageUrl,
   onPickOverlayFile,
   onRemoveOverlayImage,
+  onPickReferenceFile,
+  onRemoveReferenceImage,
 }: {
   config: CameraOverlayConfig;
   onChange: (next: InteractiveConfig) => void;
   overlayImagePath: string | null;
+  referenceImagePath: string | null;
   getImageUrl: (path: string) => string;
   onPickOverlayFile: (file: File) => Promise<void> | void;
   onRemoveOverlayImage: () => void;
+  onPickReferenceFile: (file: File) => Promise<void> | void;
+  onRemoveReferenceImage: () => void;
 }) {
   return (
     <>
-      <Box>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Overlay image
-        </Typography>
-        <Stack spacing={1}>
-          {overlayImagePath ? (
-            <Box
-              sx={{
-                border: "1px solid",
-                borderColor: "divider",
-                borderRadius: 1,
-                p: 1,
-              }}
-            >
-              <Box
-                component="img"
-                src={getImageUrl(overlayImagePath)}
-                alt="Camera overlay"
-                sx={{
-                  width: "100%",
-                  maxHeight: 180,
-                  objectFit: "contain",
-                  borderRadius: 1,
-                  mb: 1,
-                  bgcolor: "action.hover",
-                }}
-              />
-              <Button
-                size="small"
-                color="error"
-                variant="text"
-                onClick={() => {
-                  void onRemoveOverlayImage();
-                }}
-              >
-                Remove overlay image
-              </Button>
-            </Box>
-          ) : (
-            <Typography variant="caption" color="text.secondary">
-              No overlay image yet.
-            </Typography>
-          )}
-
-          <Button component="label" variant="outlined" size="small">
-            {overlayImagePath ? "Replace overlay image" : "Upload overlay image"}
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (!file) return;
-                await onPickOverlayFile(file);
-              }}
-            />
-          </Button>
-          <Typography variant="caption" color="text.secondary">
-            Recommended: 1200×900 PNG, 4:3 aspect ratio (with transparency).
-          </Typography>
-        </Stack>
-      </Box>
+      <ImageUploadBlock
+        label="Overlay image"
+        imagePath={overlayImagePath}
+        getImageUrl={getImageUrl}
+        emptyLabel="No overlay image yet."
+        uploadLabel="Upload overlay image"
+        replaceLabel="Replace overlay image"
+        removeLabel="Remove overlay image"
+        caption="Recommended: 1200×900 PNG, 4:3 aspect ratio (with transparency)."
+        objectFit="contain"
+        onPickFile={onPickOverlayFile}
+        onRemove={onRemoveOverlayImage}
+      />
+      <ImageUploadBlock
+        label="Reference photo (optional)"
+        imagePath={referenceImagePath}
+        getImageUrl={getImageUrl}
+        emptyLabel="No reference photo yet."
+        uploadLabel="Upload reference photo"
+        replaceLabel="Replace reference photo"
+        removeLabel="Remove reference photo"
+        caption="Original view the overlay was designed against; can be shown as a player hint. 1200×900 JPG, 4:3."
+        objectFit="contain"
+        onPickFile={onPickReferenceFile}
+        onRemove={onRemoveReferenceImage}
+      />
       <Box>
         <Typography variant="caption" gutterBottom>
           Overlay opacity: {config.overlayOpacity ?? 0.5}
@@ -522,6 +650,10 @@ export default function SingleStepEditor({
   onRemoveImage,
   onSetOverlayImage,
   onRemoveOverlayImage,
+  onSetOverlayReferenceImage,
+  onRemoveOverlayReferenceImage,
+  onSetHintImage,
+  onRemoveHintImage,
   onUploadSymbolImages,
   onRemoveSymbolImage,
   getImageUrl,
@@ -530,6 +662,7 @@ export default function SingleStepEditor({
   const [draftByStepId, setDraftByStepId] = useState<Record<string, Draft>>({});
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [expandedSection, setExpandedSection] = useState<EditorSection | false>("content");
 
   const draft = useMemo(() => {
     if (!step) return null;
@@ -566,24 +699,34 @@ export default function SingleStepEditor({
     });
   }, [step]);
 
-  // Keep camera overlay path in sync after immediate upload/remove.
+  // Keep camera overlay paths in sync after immediate upload/remove.
   useEffect(() => {
     if (!step) return;
     const saved = parseInteractiveConfig(step.config);
-    const savedPath =
-      saved.subtype === "camera_overlay" ? saved.overlayImagePath : "";
+    if (saved.subtype !== "camera_overlay") return;
+    const savedOverlayPath = saved.overlayImagePath;
+    const savedReferencePath = saved.referenceImagePath ?? "";
     queueMicrotask(() => {
       setDraftByStepId((prev) => {
         const existing = prev[step.id];
         if (!existing) return prev;
         if (existing.interactiveConfig.subtype !== "camera_overlay") return prev;
         const cfg = existing.interactiveConfig;
-        if (cfg.overlayImagePath === savedPath) return prev;
+        if (
+          cfg.overlayImagePath === savedOverlayPath &&
+          (cfg.referenceImagePath ?? "") === savedReferencePath
+        ) {
+          return prev;
+        }
         return {
           ...prev,
           [step.id]: {
             ...existing,
-            interactiveConfig: { ...cfg, overlayImagePath: savedPath },
+            interactiveConfig: {
+              ...cfg,
+              overlayImagePath: savedOverlayPath,
+              referenceImagePath: savedReferencePath || undefined,
+            },
           },
         };
       });
@@ -628,6 +771,7 @@ export default function SingleStepEditor({
     queueMicrotask(() => {
       setAnswerError(null);
       setMapError(null);
+      setExpandedSection("content");
     });
   }, [step?.id]);
 
@@ -642,6 +786,8 @@ export default function SingleStepEditor({
       base.incorrectOption1Text !== draft.incorrectOption1Text ||
       base.incorrectOption2Text !== draft.incorrectOption2Text ||
       base.incorrectOption3Text !== draft.incorrectOption3Text ||
+      base.hintText !== draft.hintText ||
+      base.hintDelaySecondsText !== draft.hintDelaySecondsText ||
       (draft.type === "interactive" &&
         JSON.stringify(base.interactiveConfig) !== JSON.stringify(draft.interactiveConfig))
     );
@@ -688,10 +834,14 @@ export default function SingleStepEditor({
     if (draft.type === "interactive") {
       const cfg = draft.interactiveConfig;
       switch (cfg.subtype) {
-        case "camera_overlay":
-          if (!cfg.overlayImagePath) return "Camera overlay needs an overlay image.";
+        case "camera_overlay": {
+          const saved = parseInteractiveConfig(step?.config);
+          const overlayPath =
+            saved.subtype === "camera_overlay" ? saved.overlayImagePath : "";
+          if (!overlayPath) return "Camera overlay needs an overlay image.";
           if (a === "") return "Camera overlay needs an answer.";
           break;
+        }
         case "symbol_codex":
           if (cfg.symbols.length === 0) return "Symbol codex needs at least one symbol.";
           if (cfg.slotCount < 1) return "Symbol codex needs at least 1 slot.";
@@ -728,6 +878,12 @@ export default function SingleStepEditor({
         : null;
 
     const config = draft.type === "interactive" ? draft.interactiveConfig : null;
+    const savedHint = parseStepHint(step.hints);
+    const hints = serializeStepHint({
+      text: draft.hintText,
+      delaySeconds: parseInt(draft.hintDelaySecondsText, 10) || 30,
+      imagePath: savedHint?.image,
+    });
 
     const next: PuzzleStep = {
       ...step,
@@ -736,6 +892,7 @@ export default function SingleStepEditor({
       answer,
       multiple_choice_options,
       notes: draft.notes || null,
+      hints,
       config,
     };
 
@@ -762,6 +919,13 @@ export default function SingleStepEditor({
     savedInteractiveConfig.overlayImagePath
       ? savedInteractiveConfig.overlayImagePath
       : null;
+  const referenceImagePath =
+    savedInteractiveConfig.subtype === "camera_overlay" &&
+    savedInteractiveConfig.referenceImagePath
+      ? savedInteractiveConfig.referenceImagePath
+      : null;
+  const savedHint = parseStepHint(step.hints);
+  const hintImagePath = savedHint?.image ?? null;
   const isQuestion = isQuestionStepType(draft.type);
   const isInteractive = draft.type === "interactive";
   const showAnswerRow =
@@ -783,6 +947,14 @@ export default function SingleStepEditor({
     }
   };
 
+  const contentSubtitle = draft.type;
+  const playerImageSubtitle = stepImagePath ? "Has image" : "None";
+  const hintsSubtitle =
+    draft.hintText.trim() || hintImagePath ? "Configured" : "None";
+  const notesSubtitle = draft.notes.trim() ? "Has notes" : "Empty";
+  const locationSubtitle =
+    step.latitude != null && step.longitude != null ? "Set" : "None";
+
   return (
     <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
       <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -790,233 +962,272 @@ export default function SingleStepEditor({
       </Typography>
       <Divider />
 
-      <Stack
-        spacing={2}
-        onFocusCapture={(e) => scrollFieldIntoView(e.target)}
-      >
-        <FormControl size="small">
-          <InputLabel id="step-type-label">Type</InputLabel>
-          <Select
-            labelId="step-type-label"
-            label="Type"
-            value={isQuestion ? "question" : draft.type}
-            onChange={(e) => {
-              const v = e.target.value as PuzzleStepType | "question";
-              if (v === "question") setDraft({ type: "text" });
-              else setDraft({ type: v });
-            }}
-          >
-            <MenuItem value="info">info</MenuItem>
-            <MenuItem value="question">question</MenuItem>
-            <MenuItem value="qr">qr-code</MenuItem>
-            <MenuItem value="multiple_choice">multiple-choice</MenuItem>
-            <MenuItem value="interactive">interactive</MenuItem>
-          </Select>
-        </FormControl>
+      <Box onFocusCapture={(e) => scrollFieldIntoView(e.target)}>
+        <EditorAccordion
+          section="content"
+          expandedSection={expandedSection}
+          onExpand={setExpandedSection}
+          title="Content"
+          subtitle={contentSubtitle}
+        >
+          <Stack spacing={2}>
+            <FormControl size="small">
+              <InputLabel id="step-type-label">Type</InputLabel>
+              <Select
+                labelId="step-type-label"
+                label="Type"
+                value={isQuestion ? "question" : draft.type}
+                onChange={(e) => {
+                  const v = e.target.value as PuzzleStepType | "question";
+                  if (v === "question") setDraft({ type: "text" });
+                  else setDraft({ type: v });
+                }}
+              >
+                <MenuItem value="info">info</MenuItem>
+                <MenuItem value="question">question</MenuItem>
+                <MenuItem value="qr">qr-code</MenuItem>
+                <MenuItem value="multiple_choice">multiple-choice</MenuItem>
+                <MenuItem value="interactive">interactive</MenuItem>
+              </Select>
+            </FormControl>
 
-        <TextField
-          label="Content"
-          value={draft.content}
-          onChange={(e) => setDraft({ content: e.target.value })}
-          multiline
-          minRows={4}
-          size="small"
-          {...mobileInputProps}
-        />
+            <TextField
+              label="Content"
+              value={draft.content}
+              onChange={(e) => setDraft({ content: e.target.value })}
+              multiline
+              minRows={4}
+              size="small"
+              {...mobileInputProps}
+            />
 
-        {showAnswerRow && (
-          <FormControl
-            size="small"
-            fullWidth
-            error={
-              !!answerError &&
-              (isQuestion || draft.type === "qr" || draft.type === "multiple_choice")
-            }
-          >
-            <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
-              <TextField
-                label={draft.type === "qr" ? "QR payload" : "Answer"}
-                value={draft.answerText}
-                onChange={(e) => setDraft({ answerText: e.target.value })}
-                placeholder={
-                  draft.type === "number"
-                    ? "e.g. 42"
-                    : draft.type === "qr"
-                      ? "QR payload / code"
-                      : "answer text"
-                }
+            {showAnswerRow && (
+              <FormControl
                 size="small"
                 fullWidth
-                sx={{ flex: 1 }}
-                {...mobileInputProps}
                 error={
                   !!answerError &&
                   (isQuestion || draft.type === "qr" || draft.type === "multiple_choice")
                 }
-              />
-              {isQuestion && (
-                <FormControlLabel
-                  sx={{ mt: 0.5, flexShrink: 0, mr: 0 }}
-                  control={
-                    <Checkbox
-                      size="small"
-                      checked={draft.type === "number"}
-                      onChange={(_, checked) =>
-                        setDraft({ type: checked ? "number" : "text" })
+              >
+                <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
+                  <TextField
+                    label={draft.type === "qr" ? "QR payload" : "Answer"}
+                    value={draft.answerText}
+                    onChange={(e) => setDraft({ answerText: e.target.value })}
+                    placeholder={
+                      draft.type === "number"
+                        ? "e.g. 42"
+                        : draft.type === "qr"
+                          ? "QR payload / code"
+                          : "answer text"
+                    }
+                    size="small"
+                    fullWidth
+                    sx={{ flex: 1 }}
+                    {...mobileInputProps}
+                    error={
+                      !!answerError &&
+                      (isQuestion || draft.type === "qr" || draft.type === "multiple_choice")
+                    }
+                  />
+                  {isQuestion && (
+                    <FormControlLabel
+                      sx={{ mt: 0.5, flexShrink: 0, mr: 0 }}
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={draft.type === "number"}
+                          onChange={(_, checked) =>
+                            setDraft({ type: checked ? "number" : "text" })
+                          }
+                        />
                       }
+                      label="Number"
                     />
-                  }
-                  label="Number"
-                />
-              )}
-            </Box>
-            {!!answerError && (isQuestion || draft.type === "qr") && (
-              <FormHelperText>{answerError}</FormHelperText>
+                  )}
+                </Box>
+                {!!answerError && (isQuestion || draft.type === "qr") && (
+                  <FormHelperText>{answerError}</FormHelperText>
+                )}
+              </FormControl>
             )}
-          </FormControl>
-        )}
 
-        {draft.type === "multiple_choice" && (
-          <FormControl size="small" fullWidth error={!!answerError}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Incorrect options
-            </Typography>
-            <Stack spacing={1}>
-              <TextField
-                value={draft.incorrectOption1Text}
-                onChange={(e) => setDraft({ incorrectOption1Text: e.target.value })}
-                placeholder="Option A"
-                size="small"
-                fullWidth
-                error={!!answerError}
-                {...mobileInputProps}
-              />
-              <TextField
-                value={draft.incorrectOption2Text}
-                onChange={(e) => setDraft({ incorrectOption2Text: e.target.value })}
-                placeholder="Option B"
-                size="small"
-                fullWidth
-                error={!!answerError}
-                {...mobileInputProps}
-              />
-              <TextField
-                value={draft.incorrectOption3Text}
-                onChange={(e) => setDraft({ incorrectOption3Text: e.target.value })}
-                placeholder="Option C"
-                size="small"
-                fullWidth
-                error={!!answerError}
-                {...mobileInputProps}
-              />
-            </Stack>
-            {!!answerError && <FormHelperText>{answerError}</FormHelperText>}
-          </FormControl>
-        )}
+            {draft.type === "multiple_choice" && (
+              <FormControl size="small" fullWidth error={!!answerError}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  Incorrect options
+                </Typography>
+                <Stack spacing={1}>
+                  <TextField
+                    value={draft.incorrectOption1Text}
+                    onChange={(e) => setDraft({ incorrectOption1Text: e.target.value })}
+                    placeholder="Option A"
+                    size="small"
+                    fullWidth
+                    error={!!answerError}
+                    {...mobileInputProps}
+                  />
+                  <TextField
+                    value={draft.incorrectOption2Text}
+                    onChange={(e) => setDraft({ incorrectOption2Text: e.target.value })}
+                    placeholder="Option B"
+                    size="small"
+                    fullWidth
+                    error={!!answerError}
+                    {...mobileInputProps}
+                  />
+                  <TextField
+                    value={draft.incorrectOption3Text}
+                    onChange={(e) => setDraft({ incorrectOption3Text: e.target.value })}
+                    placeholder="Option C"
+                    size="small"
+                    fullWidth
+                    error={!!answerError}
+                    {...mobileInputProps}
+                  />
+                </Stack>
+                {!!answerError && <FormHelperText>{answerError}</FormHelperText>}
+              </FormControl>
+            )}
 
-        {isInteractive && (
-          <InteractiveConfigEditor
-            config={draft.interactiveConfig}
-            answerError={answerError}
-            onChange={(next) =>
-              setDraft({
-                interactiveSubtype: next.subtype,
-                interactiveConfig: next,
-              })
-            }
-            mobileInputProps={mobileInputProps}
-            overlayImagePath={overlayImagePath}
+            {isInteractive && (
+              <InteractiveConfigEditor
+                config={draft.interactiveConfig}
+                answerError={answerError}
+                onChange={(next) =>
+                  setDraft({
+                    interactiveSubtype: next.subtype,
+                    interactiveConfig: next,
+                  })
+                }
+                mobileInputProps={mobileInputProps}
+                overlayImagePath={overlayImagePath}
+                referenceImagePath={referenceImagePath}
+                getImageUrl={getImageUrl}
+                onPickOverlayFile={async (file) => {
+                  await onSetOverlayImage({ stepId: step.id, file });
+                }}
+                onRemoveOverlayImage={() => {
+                  void onRemoveOverlayImage({ stepId: step.id });
+                }}
+                onPickReferenceFile={async (file) => {
+                  await onSetOverlayReferenceImage({ stepId: step.id, file });
+                }}
+                onRemoveReferenceImage={() => {
+                  void onRemoveOverlayReferenceImage({ stepId: step.id });
+                }}
+                onUploadSymbolFiles={async (files) => {
+                  await onUploadSymbolImages({ stepId: step.id, files });
+                }}
+                onRemoveSymbolAtIndex={async (symbolIndex) => {
+                  await onRemoveSymbolImage({ stepId: step.id, symbolIndex });
+                }}
+              />
+            )}
+          </Stack>
+        </EditorAccordion>
+
+        <EditorAccordion
+          section="playerImage"
+          expandedSection={expandedSection}
+          onExpand={setExpandedSection}
+          title="Player image"
+          subtitle={playerImageSubtitle}
+        >
+          <ImageUploadBlock
+            label="Player image"
+            imagePath={stepImagePath}
             getImageUrl={getImageUrl}
-            onPickOverlayFile={async (file) => {
-              await onSetOverlayImage({ stepId: step.id, file });
+            emptyLabel="No player image yet."
+            uploadLabel="Upload player image"
+            replaceLabel="Replace player image"
+            removeLabel="Remove player image"
+            caption="Shown to the player above the question. Crop to 4:3 (1200×900). QR steps do not display this image in the app."
+            objectFit="contain"
+            onPickFile={async (file) => {
+              await onSetImage({ stepId: step.id, file });
             }}
-            onRemoveOverlayImage={() => {
-              void onRemoveOverlayImage({ stepId: step.id });
-            }}
-            onUploadSymbolFiles={async (files) => {
-              await onUploadSymbolImages({ stepId: step.id, files });
-            }}
-            onRemoveSymbolAtIndex={async (symbolIndex) => {
-              await onRemoveSymbolImage({ stepId: step.id, symbolIndex });
+            onRemove={async () => {
+              await onRemoveImage({ stepId: step.id });
             }}
           />
-        )}
+        </EditorAccordion>
 
-        <TextField
-          label="Notes (admin-only)"
-          value={draft.notes}
-          onChange={(e) => setDraft({ notes: e.target.value })}
-          multiline
-          minRows={3}
-          size="small"
-          placeholder="e.g. QR is on blue door"
-          {...mobileInputProps}
-        />
-
-        <Box>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Image
-          </Typography>
-          <Stack spacing={1}>
-            {stepImagePath ? (
-              <Box
-                sx={{
-                  border: "1px solid",
-                  borderColor: "divider",
-                  borderRadius: 1,
-                  p: 1,
-                }}
-              >
-                <Box
-                  component="img"
-                  src={getImageUrl(stepImagePath)}
-                  alt="Step image"
-                  sx={{
-                    width: "100%",
-                    maxHeight: 180,
-                    objectFit: "cover",
-                    borderRadius: 1,
-                    mb: 1,
-                  }}
-                />
-                <Button
-                  size="small"
-                  color="error"
-                  variant="text"
-                  onClick={async () => {
-                    await onRemoveImage({ stepId: step.id });
-                  }}
-                >
-                  Remove image
-                </Button>
-              </Box>
-            ) : (
-              <Typography variant="caption" color="text.secondary">
-                No image yet.
-              </Typography>
-            )}
-
-            <Button component="label" variant="outlined" size="small">
-              {stepImagePath ? "Replace image" : "Upload image"}
-              <input
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (!file) return;
-                  await onSetImage({ stepId: step.id, file });
-                }}
-              />
-            </Button>
+        <EditorAccordion
+          section="hints"
+          expandedSection={expandedSection}
+          onExpand={setExpandedSection}
+          title="Hints"
+          subtitle={hintsSubtitle}
+        >
+          <Stack spacing={2}>
+            <TextField
+              label="Hint text"
+              value={draft.hintText}
+              onChange={(e) => setDraft({ hintText: e.target.value })}
+              multiline
+              minRows={2}
+              size="small"
+              placeholder="e.g. Look at the blue door on the left"
+              {...mobileInputProps}
+            />
+            <TextField
+              label="Delay before hint (seconds)"
+              value={draft.hintDelaySecondsText}
+              onChange={(e) => setDraft({ hintDelaySecondsText: e.target.value })}
+              size="small"
+              type="number"
+              inputProps={{ min: 0 }}
+              {...mobileInputProps}
+            />
+            <ImageUploadBlock
+              label="Hint image (optional)"
+              imagePath={hintImagePath}
+              getImageUrl={getImageUrl}
+              emptyLabel="No hint image yet."
+              uploadLabel="Upload hint image"
+              replaceLabel="Replace hint image"
+              removeLabel="Remove hint image"
+              caption="Optional image shown with the hint after the delay. Crop to 4:3 (1200×900)."
+              objectFit="contain"
+              onPickFile={async (file) => {
+                await onSetHintImage({ stepId: step.id, file });
+              }}
+              onRemove={() => {
+                void onRemoveHintImage({ stepId: step.id });
+              }}
+            />
           </Stack>
-        </Box>
+        </EditorAccordion>
 
-        <Box>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Map location
-          </Typography>
+        <EditorAccordion
+          section="notes"
+          expandedSection={expandedSection}
+          onExpand={setExpandedSection}
+          title="Notes"
+          subtitle={notesSubtitle}
+        >
+          <TextField
+            label="Admin notes (not shown to player)"
+            value={draft.notes}
+            onChange={(e) => setDraft({ notes: e.target.value })}
+            multiline
+            minRows={3}
+            size="small"
+            placeholder="e.g. QR is on blue door"
+            fullWidth
+            {...mobileInputProps}
+          />
+        </EditorAccordion>
+
+        <EditorAccordion
+          section="location"
+          expandedSection={expandedSection}
+          onExpand={setExpandedSection}
+          title="Location"
+          subtitle={locationSubtitle}
+        >
           <Stack spacing={1}>
             <Box sx={{ display: "flex", gap: 1 }}>
               <TextField
@@ -1072,11 +1283,7 @@ export default function SingleStepEditor({
                 Cancel placement
               </Button>
             ) : (
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={onStartPlacement}
-              >
+              <Button variant="outlined" size="small" onClick={onStartPlacement}>
                 Set location on map
               </Button>
             )}
@@ -1093,11 +1300,11 @@ export default function SingleStepEditor({
                 Remove map location
               </Button>
             )}
+            <Typography variant="caption" color="text.secondary">
+              Optional. Steps can omit coordinates; when set, the marker appears on the map trail.
+            </Typography>
           </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
-            Optional. Steps can omit coordinates; when set, the marker appears on the map trail.
-          </Typography>
-        </Box>
+        </EditorAccordion>
 
         {!!mapError && (
           <Typography variant="body2" color="error">
@@ -1105,7 +1312,7 @@ export default function SingleStepEditor({
           </Typography>
         )}
 
-        <Box sx={{ display: "flex", gap: 1 }}>
+        <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
           <Button variant="contained" onClick={save} disabled={!dirty} fullWidth>
             Update
           </Button>
@@ -1121,7 +1328,7 @@ export default function SingleStepEditor({
             Delete
           </Button>
         </Box>
-      </Stack>
+      </Box>
     </Box>
   );
 }

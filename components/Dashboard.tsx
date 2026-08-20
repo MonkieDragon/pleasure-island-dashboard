@@ -16,6 +16,8 @@ import {
   PuzzleStep,
   Region,
   Treasure,
+  parseStepHint,
+  serializeStepHint,
   type CameraOverlayConfig,
   type InteractiveConfig,
   type SymbolCodexConfig,
@@ -640,6 +642,8 @@ export default function Dashboard() {
           subtype: "camera_overlay",
           overlayImagePath:
             typeof obj.overlayImagePath === "string" ? obj.overlayImagePath : "",
+          referenceImagePath:
+            typeof obj.referenceImagePath === "string" ? obj.referenceImagePath : undefined,
           overlayOpacity:
             typeof obj.overlayOpacity === "number" ? obj.overlayOpacity : 0.5,
         };
@@ -693,6 +697,98 @@ export default function Dashboard() {
     const nextConfig: InteractiveConfig = {
       ...prevConfig,
       overlayImagePath: "",
+    };
+    await updateStep({ ...step, config: nextConfig });
+  };
+
+  const setStepHintImage = async (input: { stepId: string; file: File }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step) return;
+
+    const existing = parseStepHint(step.hints);
+    const prevPath = existing?.image ?? null;
+
+    const ext =
+      input.file.name && input.file.name.includes(".")
+        ? input.file.name.split(".").pop()
+        : "jpg";
+    const objectPath = `hints/${step.id}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("images")
+      .upload(objectPath, input.file, { upsert: true });
+    if (uploadError) throw new Error(formatSupabaseError(uploadError));
+
+    if (prevPath && prevPath !== objectPath) {
+      await supabase.storage.from("images").remove([prevPath]);
+    }
+
+    const nextHints = serializeStepHint({
+      text: existing?.text ?? "",
+      delaySeconds: existing?.delaySeconds ?? 30,
+      imagePath: objectPath,
+    });
+    await updateStep({ ...step, hints: nextHints });
+  };
+
+  const removeStepHintImage = async (input: { stepId: string }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step) return;
+
+    const existing = parseStepHint(step.hints);
+    if (!existing?.image) return;
+
+    await supabase.storage.from("images").remove([existing.image]);
+
+    const nextHints = serializeStepHint({
+      text: existing.text,
+      delaySeconds: existing.delaySeconds,
+      imagePath: null,
+    });
+    await updateStep({ ...step, hints: nextHints });
+  };
+
+  const setStepOverlayReferenceImage = async (input: { stepId: string; file: File }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step) return;
+
+    const prevConfig = cameraOverlayConfigFromStep(step);
+    const prevPath = prevConfig.referenceImagePath ?? null;
+
+    const ext =
+      input.file.name && input.file.name.includes(".")
+        ? input.file.name.split(".").pop()
+        : "jpg";
+    const objectPath = `overlays/${step.id}-reference.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("images")
+      .upload(objectPath, input.file, { upsert: true });
+    if (uploadError) throw new Error(formatSupabaseError(uploadError));
+
+    if (prevPath && prevPath !== objectPath) {
+      await supabase.storage.from("images").remove([prevPath]);
+    }
+
+    const nextConfig: InteractiveConfig = {
+      ...prevConfig,
+      referenceImagePath: objectPath,
+    };
+    await updateStep({ ...step, config: nextConfig });
+  };
+
+  const removeStepOverlayReferenceImage = async (input: { stepId: string }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step) return;
+
+    const prevConfig = cameraOverlayConfigFromStep(step);
+    if (prevConfig.referenceImagePath) {
+      await supabase.storage.from("images").remove([prevConfig.referenceImagePath]);
+    }
+
+    const nextConfig: InteractiveConfig = {
+      ...prevConfig,
+      referenceImagePath: undefined,
     };
     await updateStep({ ...step, config: nextConfig });
   };
@@ -1567,6 +1663,10 @@ export default function Dashboard() {
         onRemoveImage={removeStepImage}
         onSetOverlayImage={setStepOverlayImage}
         onRemoveOverlayImage={removeStepOverlayImage}
+        onSetOverlayReferenceImage={setStepOverlayReferenceImage}
+        onRemoveOverlayReferenceImage={removeStepOverlayReferenceImage}
+        onSetHintImage={setStepHintImage}
+        onRemoveHintImage={removeStepHintImage}
         onUploadSymbolImages={uploadSymbolImages}
         onRemoveSymbolImage={removeSymbolImage}
         getImageUrl={getImageUrl}
