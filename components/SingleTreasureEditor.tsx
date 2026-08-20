@@ -37,7 +37,7 @@ type Props = {
   onUpdate: (next: Treasure) => Promise<void> | void;
   onSetImage: (input: { treasureId: string; file: File }) => Promise<void> | void;
   onRemoveImage: (input: { treasureId: string }) => Promise<void> | void;
-  getImageUrl: (path: string) => string;
+  getImageUrl: (path: string, cacheKey?: string) => string;
   compactMobile?: boolean;
 };
 
@@ -263,7 +263,7 @@ export default function SingleTreasureEditor({
               >
                 <Box
                   component="img"
-                  src={getImageUrl(imagePath)}
+                  src={getImageUrl(imagePath, `treasure-image:${treasure.id}`)}
                   alt="Treasure"
                   sx={{
                     width: "100%",

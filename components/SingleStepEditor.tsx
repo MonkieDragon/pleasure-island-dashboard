@@ -78,7 +78,7 @@ type Props = {
     stepId: string;
     symbolIndex: number;
   }) => Promise<void> | void;
-  getImageUrl: (path: string) => string;
+  getImageUrl: (path: string, cacheKey?: string) => string;
   /** Larger inputs + scroll focused field into view (mobile editor panel). */
   compactMobile?: boolean;
 };
@@ -162,6 +162,7 @@ function toDraft(step: PuzzleStep): Draft {
 function ImageUploadBlock({
   label,
   imagePath,
+  imageCacheKey,
   getImageUrl,
   emptyLabel,
   uploadLabel,
@@ -174,7 +175,8 @@ function ImageUploadBlock({
 }: {
   label: string;
   imagePath: string | null;
-  getImageUrl: (path: string) => string;
+  imageCacheKey?: string;
+  getImageUrl: (path: string, cacheKey?: string) => string;
   emptyLabel: string;
   uploadLabel: string;
   replaceLabel: string;
@@ -201,7 +203,8 @@ function ImageUploadBlock({
           >
             <Box
               component="img"
-              src={getImageUrl(imagePath)}
+              key={`${imagePath}-${imageCacheKey ?? ""}`}
+              src={getImageUrl(imagePath, imageCacheKey)}
               alt={label}
               sx={{
                 width: "100%",
@@ -300,6 +303,7 @@ function InteractiveConfigEditor({
   answerError,
   onChange,
   mobileInputProps,
+  stepId,
   overlayImagePath,
   referenceImagePath,
   getImageUrl,
@@ -314,9 +318,10 @@ function InteractiveConfigEditor({
   answerError: string | null;
   onChange: (next: InteractiveConfig) => void;
   mobileInputProps: Record<string, unknown>;
+  stepId: string;
   overlayImagePath: string | null;
   referenceImagePath: string | null;
-  getImageUrl: (path: string) => string;
+  getImageUrl: (path: string, cacheKey?: string) => string;
   onPickOverlayFile: (file: File) => Promise<void> | void;
   onRemoveOverlayImage: () => void;
   onPickReferenceFile: (file: File) => Promise<void> | void;
@@ -368,6 +373,7 @@ function InteractiveConfigEditor({
         <CameraOverlayFields
           config={config}
           onChange={onChange}
+          stepId={stepId}
           overlayImagePath={overlayImagePath}
           referenceImagePath={referenceImagePath}
           getImageUrl={getImageUrl}
@@ -382,6 +388,7 @@ function InteractiveConfigEditor({
           config={config}
           onChange={onChange}
           mobileInputProps={mobileInputProps}
+          stepId={stepId}
           getImageUrl={getImageUrl}
           onUploadSymbolFiles={onUploadSymbolFiles}
           onRemoveSymbolAtIndex={onRemoveSymbolAtIndex}
@@ -404,6 +411,7 @@ function InteractiveConfigEditor({
 function CameraOverlayFields({
   config,
   onChange,
+  stepId,
   overlayImagePath,
   referenceImagePath,
   getImageUrl,
@@ -414,9 +422,10 @@ function CameraOverlayFields({
 }: {
   config: CameraOverlayConfig;
   onChange: (next: InteractiveConfig) => void;
+  stepId: string;
   overlayImagePath: string | null;
   referenceImagePath: string | null;
-  getImageUrl: (path: string) => string;
+  getImageUrl: (path: string, cacheKey?: string) => string;
   onPickOverlayFile: (file: File) => Promise<void> | void;
   onRemoveOverlayImage: () => void;
   onPickReferenceFile: (file: File) => Promise<void> | void;
@@ -427,6 +436,7 @@ function CameraOverlayFields({
       <ImageUploadBlock
         label="Overlay image"
         imagePath={overlayImagePath}
+        imageCacheKey={overlayImagePath ? `step-overlay:${stepId}` : undefined}
         getImageUrl={getImageUrl}
         emptyLabel="No overlay image yet."
         uploadLabel="Upload overlay image"
@@ -440,6 +450,7 @@ function CameraOverlayFields({
       <ImageUploadBlock
         label="Reference photo (optional)"
         imagePath={referenceImagePath}
+        imageCacheKey={referenceImagePath ? `step-overlay-ref:${stepId}` : undefined}
         getImageUrl={getImageUrl}
         emptyLabel="No reference photo yet."
         uploadLabel="Upload reference photo"
@@ -474,6 +485,7 @@ function SymbolCodexFields({
   config,
   onChange,
   mobileInputProps,
+  stepId,
   getImageUrl,
   onUploadSymbolFiles,
   onRemoveSymbolAtIndex,
@@ -481,7 +493,8 @@ function SymbolCodexFields({
   config: SymbolCodexConfig;
   onChange: (next: InteractiveConfig) => void;
   mobileInputProps: Record<string, unknown>;
-  getImageUrl: (path: string) => string;
+  stepId: string;
+  getImageUrl: (path: string, cacheKey?: string) => string;
   onUploadSymbolFiles: (files: File[]) => Promise<void> | void;
   onRemoveSymbolAtIndex: (symbolIndex: number) => Promise<void> | void;
 }) {
@@ -523,7 +536,8 @@ function SymbolCodexFields({
                   </Typography>
                   <Box
                     component="img"
-                    src={getImageUrl(path)}
+                    key={`${path}-${idx}`}
+                    src={getImageUrl(path, `step-symbols:${stepId}`)}
                     alt={`Symbol ${idx}`}
                     sx={{
                       width: 64,
@@ -1102,6 +1116,7 @@ export default function SingleStepEditor({
                   })
                 }
                 mobileInputProps={mobileInputProps}
+                stepId={step.id}
                 overlayImagePath={overlayImagePath}
                 referenceImagePath={referenceImagePath}
                 getImageUrl={getImageUrl}
@@ -1138,6 +1153,7 @@ export default function SingleStepEditor({
           <ImageUploadBlock
             label="Player image"
             imagePath={stepImagePath}
+            imageCacheKey={stepImagePath ? `step-image:${step.id}` : undefined}
             getImageUrl={getImageUrl}
             emptyLabel="No player image yet."
             uploadLabel="Upload player image"
@@ -1184,6 +1200,7 @@ export default function SingleStepEditor({
             <ImageUploadBlock
               label="Hint image (optional)"
               imagePath={hintImagePath}
+              imageCacheKey={hintImagePath ? `step-hint:${step.id}` : undefined}
               getImageUrl={getImageUrl}
               emptyLabel="No hint image yet."
               uploadLabel="Upload hint image"

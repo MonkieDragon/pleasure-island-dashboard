@@ -109,7 +109,7 @@ type Props = {
 
   onSetChainImage: (input: { chainId: string; file: File }) => Promise<void> | void;
   onRemoveChainImage: (input: { chainId: string }) => Promise<void> | void;
-  getImageUrl: (path: string) => string;
+  getImageUrl: (path: string, cacheKey?: string) => string;
   /** When true, sidebar fills horizontal space (mobile list tab). */
   fullWidth?: boolean;
   /** When false, hide "Add region" (non-admin editors). */
@@ -1245,7 +1245,7 @@ export default function Sidebar({
                   <Box sx={{ mb: 1 }}>
                     <Box
                       component="img"
-                      src={getImageUrl(selectedChain.image_path)}
+                      src={getImageUrl(selectedChain.image_path, `chain-image:${selectedChain.id}`)}
                       alt="Chain image"
                       sx={{
                         width: "100%",

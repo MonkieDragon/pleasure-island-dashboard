@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { formatSupabaseError } from "@/lib/supabaseError";
+import { withImageCacheBust } from "@/lib/storageImageUrl";
 
 import {
   COUNTRIES,
@@ -265,6 +266,8 @@ export default function Dashboard() {
   const [stepSpotlightCenter, setStepSpotlightCenter] = useState<
     [number, number] | null
   >(null);
+  /** Bumped after storage upload/remove so preview URLs bypass browser cache. */
+  const [imageCacheVersion, setImageCacheVersion] = useState<Record<string, number>>({});
   const [stepsLoadedForChainId, setStepsLoadedForChainId] = useState<
     string | null
   >(null);
@@ -497,6 +500,7 @@ export default function Dashboard() {
   const setTreasureImage = async (input: { treasureId: string; file: File }) => {
     const t = treasures.find((x) => x.id === input.treasureId) || null;
     if (!t) return;
+    const prevPath = t.image_path;
     const ext =
       input.file.name && input.file.name.includes(".")
         ? input.file.name.split(".").pop()
@@ -506,7 +510,11 @@ export default function Dashboard() {
       .from("images")
       .upload(objectPath, input.file, { upsert: true });
     if (uploadError) throw new Error(formatSupabaseError(uploadError));
+    if (prevPath && prevPath !== objectPath) {
+      await supabase.storage.from("images").remove([prevPath]);
+    }
     await updateTreasure({ ...t, image_path: objectPath });
+    bumpImageCache(`treasure-image:${input.treasureId}`);
   };
 
   const removeTreasureImage = async (input: { treasureId: string }) => {
@@ -516,6 +524,7 @@ export default function Dashboard() {
       await supabase.storage.from("images").remove([t.image_path]);
     }
     await updateTreasure({ ...t, image_path: null });
+    bumpImageCache(`treasure-image:${input.treasureId}`);
   };
 
   // ----------------------------
@@ -558,14 +567,24 @@ export default function Dashboard() {
     );
   };
 
-  const getImageUrl = (path: string) => {
-    return supabase.storage.from("images").getPublicUrl(path).data.publicUrl;
-  };
+  const bumpImageCache = useCallback((cacheKey: string) => {
+    setImageCacheVersion((prev) => ({ ...prev, [cacheKey]: Date.now() }));
+  }, []);
+
+  const getImageUrl = useCallback(
+    (path: string, cacheKey?: string) => {
+      const base = supabase.storage.from("images").getPublicUrl(path).data.publicUrl;
+      const version = cacheKey ? imageCacheVersion[cacheKey] : undefined;
+      return withImageCacheBust(base, version);
+    },
+    [imageCacheVersion],
+  );
 
   const setChainImage = async (input: { chainId: string; file: File }) => {
     const chain = chains.find((c) => c.id === input.chainId) || null;
     if (!chain) return;
 
+    const prevPath = chain.image_path;
     const ext =
       input.file.name && input.file.name.includes(".")
         ? input.file.name.split(".").pop()
@@ -577,6 +596,10 @@ export default function Dashboard() {
       .upload(objectPath, input.file, { upsert: true });
     if (uploadError) throw new Error(formatSupabaseError(uploadError));
 
+    if (prevPath && prevPath !== objectPath) {
+      await supabase.storage.from("images").remove([prevPath]);
+    }
+
     await supabase
       .from("puzzle_chains")
       .update({ image_path: objectPath })
@@ -585,6 +608,7 @@ export default function Dashboard() {
     setChains((prev) =>
       prev.map((c) => (c.id === chain.id ? { ...c, image_path: objectPath } : c)),
     );
+    bumpImageCache(`chain-image:${chain.id}`);
   };
 
   const removeChainImage = async (input: { chainId: string }) => {
@@ -600,6 +624,7 @@ export default function Dashboard() {
     setChains((prev) =>
       prev.map((c) => (c.id === chain.id ? { ...c, image_path: null } : c)),
     );
+    bumpImageCache(`chain-image:${chain.id}`);
   };
 
   const setStepImage = async (input: {
@@ -609,6 +634,7 @@ export default function Dashboard() {
     const step = steps.find((s) => s.id === input.stepId) || null;
     if (!step) return;
 
+    const prevPath = step.image_path;
     const ext =
       input.file.name && input.file.name.includes(".")
         ? input.file.name.split(".").pop()
@@ -620,7 +646,12 @@ export default function Dashboard() {
       .upload(objectPath, input.file, { upsert: true });
     if (uploadError) throw new Error(formatSupabaseError(uploadError));
 
+    if (prevPath && prevPath !== objectPath) {
+      await supabase.storage.from("images").remove([prevPath]);
+    }
+
     await updateStep({ ...step, image_path: objectPath });
+    bumpImageCache(`step-image:${step.id}`);
   };
 
   const removeStepImage = async (input: { stepId: string }) => {
@@ -631,6 +662,7 @@ export default function Dashboard() {
       await supabase.storage.from("images").remove([step.image_path]);
     }
     await updateStep({ ...step, image_path: null });
+    bumpImageCache(`step-image:${step.id}`);
   };
 
   const cameraOverlayConfigFromStep = (step: PuzzleStep): CameraOverlayConfig => {
@@ -683,6 +715,7 @@ export default function Dashboard() {
       overlayImagePath: objectPath,
     };
     await updateStep({ ...step, config: nextConfig });
+    bumpImageCache(`step-overlay:${step.id}`);
   };
 
   const removeStepOverlayImage = async (input: { stepId: string }) => {
@@ -699,6 +732,7 @@ export default function Dashboard() {
       overlayImagePath: "",
     };
     await updateStep({ ...step, config: nextConfig });
+    bumpImageCache(`step-overlay:${step.id}`);
   };
 
   const setStepHintImage = async (input: { stepId: string; file: File }) => {
@@ -729,6 +763,7 @@ export default function Dashboard() {
       imagePath: objectPath,
     });
     await updateStep({ ...step, hints: nextHints });
+    bumpImageCache(`step-hint:${step.id}`);
   };
 
   const removeStepHintImage = async (input: { stepId: string }) => {
@@ -746,6 +781,7 @@ export default function Dashboard() {
       imagePath: null,
     });
     await updateStep({ ...step, hints: nextHints });
+    bumpImageCache(`step-hint:${step.id}`);
   };
 
   const setStepOverlayReferenceImage = async (input: { stepId: string; file: File }) => {
@@ -775,6 +811,7 @@ export default function Dashboard() {
       referenceImagePath: objectPath,
     };
     await updateStep({ ...step, config: nextConfig });
+    bumpImageCache(`step-overlay-ref:${step.id}`);
   };
 
   const removeStepOverlayReferenceImage = async (input: { stepId: string }) => {
@@ -791,6 +828,7 @@ export default function Dashboard() {
       referenceImagePath: undefined,
     };
     await updateStep({ ...step, config: nextConfig });
+    bumpImageCache(`step-overlay-ref:${step.id}`);
   };
 
   const symbolCodexConfigFromStep = (step: PuzzleStep): SymbolCodexConfig => {
@@ -855,6 +893,7 @@ export default function Dashboard() {
       symbols: nextSymbols,
     };
     await updateStep({ ...step, config: nextConfig });
+    bumpImageCache(`step-symbols:${step.id}`);
   };
 
   const removeSymbolImage = async (input: {
@@ -889,6 +928,7 @@ export default function Dashboard() {
       answerArray: nextAnswerArray,
     };
     await updateStep({ ...step, config: nextConfig });
+    bumpImageCache(`step-symbols:${step.id}`);
   };
 
   const reorderSteps = async (orderedStepIds: string[]) => {
