@@ -96,39 +96,54 @@ export type Database = {
       puzzle_chains: {
         Row: {
           created_at: string | null
+          description: string | null
+          distance_km: number | null
+          duration_minutes: number | null
           id: string
           image_path: string | null
           is_eatery: boolean
+          is_free: boolean
           latitude: number
           longitude: number
           optional: boolean
           ready_to_publish: boolean
           region_id: string | null
           title: string
+          transport_mode: string | null
         }
         Insert: {
           created_at?: string | null
+          description?: string | null
+          distance_km?: number | null
+          duration_minutes?: number | null
           id?: string
           image_path?: string | null
           is_eatery?: boolean
+          is_free?: boolean
           latitude: number
           longitude: number
           optional?: boolean
           ready_to_publish?: boolean
           region_id?: string | null
           title: string
+          transport_mode?: string | null
         }
         Update: {
           created_at?: string | null
+          description?: string | null
+          distance_km?: number | null
+          duration_minutes?: number | null
           id?: string
           image_path?: string | null
           is_eatery?: boolean
+          is_free?: boolean
           latitude?: number
           longitude?: number
           optional?: boolean
           ready_to_publish?: boolean
           region_id?: string | null
           title?: string
+          transport_mode?: string | null
         }
         Relationships: [
           {

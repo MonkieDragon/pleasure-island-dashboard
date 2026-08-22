@@ -1274,6 +1274,51 @@ export default function Dashboard() {
     );
   };
 
+  const updateChainTrailMetadata = async (
+    chainId: string,
+    metadata: {
+      description: string;
+      durationMinutes: string;
+      distanceKm: string;
+      transportMode: "" | "walk" | "scooter";
+      isFree: boolean;
+    },
+  ) => {
+    const durationRaw = metadata.durationMinutes.trim();
+    const distanceRaw = metadata.distanceKm.trim();
+    const duration_minutes =
+      durationRaw === "" ? null : Math.max(0, parseInt(durationRaw, 10) || 0);
+    const distance_km =
+      distanceRaw === "" ? null : Math.max(0, Number(distanceRaw) || 0);
+
+    const { error } = await supabase
+      .from("puzzle_chains")
+      .update({
+        description: metadata.description.trim() || null,
+        duration_minutes,
+        distance_km,
+        transport_mode: metadata.transportMode || null,
+        is_free: metadata.isFree,
+      })
+      .eq("id", chainId);
+    if (error) throw new Error(formatSupabaseError(error));
+
+    setChains((prev) =>
+      prev.map((c) =>
+        c.id === chainId
+          ? {
+              ...c,
+              description: metadata.description.trim() || null,
+              duration_minutes,
+              distance_km,
+              transport_mode: metadata.transportMode || null,
+              is_free: metadata.isFree,
+            }
+          : c,
+      ),
+    );
+  };
+
   const renameRegion = async (regionId: string, name: string) => {
     const trimmed = name.trim();
     if (!trimmed) throw new Error("Name is required.");
@@ -1620,6 +1665,7 @@ export default function Dashboard() {
       onRenameChain={renameChain}
       onSetChainOptional={setChainOptional}
       onSetChainIsEatery={setChainIsEatery}
+      onUpdateChainTrailMetadata={updateChainTrailMetadata}
       fullWidth={fullWidth}
     />
   );

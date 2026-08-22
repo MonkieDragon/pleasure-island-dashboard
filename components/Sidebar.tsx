@@ -50,6 +50,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useMemo, useState } from "react";
+import ChainTrailMetadataEditor from "./ChainTrailMetadataEditor";
 
 type Props = {
   countries: Country[];
@@ -121,6 +122,16 @@ type Props = {
   onRenameChain: (chainId: string, title: string) => Promise<void>;
   onSetChainOptional: (chainId: string, optional: boolean) => Promise<void>;
   onSetChainIsEatery: (chainId: string, isEatery: boolean) => Promise<void>;
+  onUpdateChainTrailMetadata: (
+    chainId: string,
+    metadata: {
+      description: string;
+      durationMinutes: string;
+      distanceKm: string;
+      transportMode: "" | "walk" | "scooter";
+      isFree: boolean;
+    },
+  ) => Promise<void>;
 };
 
 function stepContentPreview(content: string | null): string {
@@ -431,6 +442,7 @@ export default function Sidebar({
   onRenameChain,
   onSetChainOptional,
   onSetChainIsEatery,
+  onUpdateChainTrailMetadata,
 }: Props) {
   const selectedCountry = getCountryById(selectedCountryId);
   const selectedRegion = selectedRegionId
@@ -1285,6 +1297,15 @@ export default function Sidebar({
                 </Button>
               </Box>
             )}
+
+            {selectedChain ? (
+              <ChainTrailMetadataEditor
+                chain={selectedChain}
+                onSave={async (metadata) => {
+                  await onUpdateChainTrailMetadata(selectedChain.id, metadata);
+                }}
+              />
+            ) : null}
 
             <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
               Steps (drag handle to reorder)
