@@ -69,6 +69,27 @@ NOT:
 
 ---
 
+# 🔗 2. SIBLING APP & DATABASE OWNERSHIP
+
+The player-facing mobile app lives in a **separate repo**: `pleasure-island` (often opened together in a multi-root Cursor workspace).
+
+| Concern | Owner |
+| --- | --- |
+| Supabase migrations / schema SQL | **This repo** (`supabase/migrations/`, `supabase/schema.sql`) |
+| Generated TS types (dashboard) | This repo — `npm run db:types` → `supabase/types.ts` |
+| Generated TS types (player) | `pleasure-island` — `npm run supabase:types` → `types/supabase.ts` |
+
+Both apps link to the **same hosted Supabase project**. Do not invent a second schema or add migrations under `pleasure-island`.
+
+After any schema change:
+
+1. Apply / pull migrations in this repo as usual (`db:pull` / `db:sync` when needed)
+2. Regenerate types here (`npm run db:types`)
+3. Regenerate types in `pleasure-island` (`npm run supabase:types`)
+
+Domain terms (`region`, `chain`, `step`, `treasure`) must stay aligned with the player app. Do not rename or reinterpret them for either codebase.
+
+---
 
 # 🧠 3. FRONTEND ARCHITECTURE
 

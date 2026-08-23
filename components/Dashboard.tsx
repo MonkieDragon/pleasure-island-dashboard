@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { formatSupabaseError } from "@/lib/supabaseError";
+import {
+  fileExtensionFromName,
+  removeStorageImage,
+  uploadStorageImage,
+} from "@/lib/storageImage";
 import { withImageCacheBust } from "@/lib/storageImageUrl";
 
 import {
@@ -21,6 +26,7 @@ import {
   serializeStepHint,
   type CameraOverlayConfig,
   type InteractiveConfig,
+  type JigsawConfig,
   type SymbolCodexConfig,
 } from "@/types/database";
 import type { MapHover } from "@/types/mapUi";
@@ -500,19 +506,12 @@ export default function Dashboard() {
   const setTreasureImage = async (input: { treasureId: string; file: File }) => {
     const t = treasures.find((x) => x.id === input.treasureId) || null;
     if (!t) return;
-    const prevPath = t.image_path;
-    const ext =
-      input.file.name && input.file.name.includes(".")
-        ? input.file.name.split(".").pop()
-        : "jpg";
-    const objectPath = `treasures/${input.treasureId}.${ext}`;
-    const { error: uploadError } = await supabase.storage
-      .from("images")
-      .upload(objectPath, input.file, { upsert: true });
-    if (uploadError) throw new Error(formatSupabaseError(uploadError));
-    if (prevPath && prevPath !== objectPath) {
-      await supabase.storage.from("images").remove([prevPath]);
-    }
+    const ext = fileExtensionFromName(input.file.name, "jpg");
+    const objectPath = await uploadStorageImage(supabase, {
+      file: input.file,
+      objectPath: `treasures/${input.treasureId}.${ext}`,
+      previousPath: t.image_path,
+    });
     await updateTreasure({ ...t, image_path: objectPath });
     bumpImageCache(`treasure-image:${input.treasureId}`);
   };
@@ -521,7 +520,7 @@ export default function Dashboard() {
     const t = treasures.find((x) => x.id === input.treasureId) || null;
     if (!t) return;
     if (t.image_path) {
-      await supabase.storage.from("images").remove([t.image_path]);
+      await removeStorageImage(supabase, t.image_path);
     }
     await updateTreasure({ ...t, image_path: null });
     bumpImageCache(`treasure-image:${input.treasureId}`);
@@ -584,21 +583,12 @@ export default function Dashboard() {
     const chain = chains.find((c) => c.id === input.chainId) || null;
     if (!chain) return;
 
-    const prevPath = chain.image_path;
-    const ext =
-      input.file.name && input.file.name.includes(".")
-        ? input.file.name.split(".").pop()
-        : "jpg";
-    const objectPath = `chains/${chain.id}.${ext}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("images")
-      .upload(objectPath, input.file, { upsert: true });
-    if (uploadError) throw new Error(formatSupabaseError(uploadError));
-
-    if (prevPath && prevPath !== objectPath) {
-      await supabase.storage.from("images").remove([prevPath]);
-    }
+    const ext = fileExtensionFromName(input.file.name, "jpg");
+    const objectPath = await uploadStorageImage(supabase, {
+      file: input.file,
+      objectPath: `chains/${chain.id}.${ext}`,
+      previousPath: chain.image_path,
+    });
 
     await supabase
       .from("puzzle_chains")
@@ -616,7 +606,7 @@ export default function Dashboard() {
     if (!chain) return;
 
     if (chain.image_path) {
-      await supabase.storage.from("images").remove([chain.image_path]);
+      await removeStorageImage(supabase, chain.image_path);
     }
 
     await supabase.from("puzzle_chains").update({ image_path: null }).eq("id", chain.id);
@@ -634,21 +624,12 @@ export default function Dashboard() {
     const step = steps.find((s) => s.id === input.stepId) || null;
     if (!step) return;
 
-    const prevPath = step.image_path;
-    const ext =
-      input.file.name && input.file.name.includes(".")
-        ? input.file.name.split(".").pop()
-        : "jpg";
-    const objectPath = `steps/${step.id}.${ext}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("images")
-      .upload(objectPath, input.file, { upsert: true });
-    if (uploadError) throw new Error(formatSupabaseError(uploadError));
-
-    if (prevPath && prevPath !== objectPath) {
-      await supabase.storage.from("images").remove([prevPath]);
-    }
+    const ext = fileExtensionFromName(input.file.name, "jpg");
+    const objectPath = await uploadStorageImage(supabase, {
+      file: input.file,
+      objectPath: `steps/${step.id}.${ext}`,
+      previousPath: step.image_path,
+    });
 
     await updateStep({ ...step, image_path: objectPath });
     bumpImageCache(`step-image:${step.id}`);
@@ -659,7 +640,7 @@ export default function Dashboard() {
     if (!step) return;
 
     if (step.image_path) {
-      await supabase.storage.from("images").remove([step.image_path]);
+      await removeStorageImage(supabase, step.image_path);
     }
     await updateStep({ ...step, image_path: null });
     bumpImageCache(`step-image:${step.id}`);
@@ -693,22 +674,12 @@ export default function Dashboard() {
     if (!step) return;
 
     const prevConfig = cameraOverlayConfigFromStep(step);
-    const prevPath = prevConfig.overlayImagePath || null;
-
-    const ext =
-      input.file.name && input.file.name.includes(".")
-        ? input.file.name.split(".").pop()
-        : "png";
-    const objectPath = `overlays/${step.id}.${ext}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("images")
-      .upload(objectPath, input.file, { upsert: true });
-    if (uploadError) throw new Error(formatSupabaseError(uploadError));
-
-    if (prevPath && prevPath !== objectPath) {
-      await supabase.storage.from("images").remove([prevPath]);
-    }
+    const ext = fileExtensionFromName(input.file.name, "png");
+    const objectPath = await uploadStorageImage(supabase, {
+      file: input.file,
+      objectPath: `overlays/${step.id}.${ext}`,
+      previousPath: prevConfig.overlayImagePath || null,
+    });
 
     const nextConfig: InteractiveConfig = {
       ...prevConfig,
@@ -724,7 +695,7 @@ export default function Dashboard() {
 
     const prevConfig = cameraOverlayConfigFromStep(step);
     if (prevConfig.overlayImagePath) {
-      await supabase.storage.from("images").remove([prevConfig.overlayImagePath]);
+      await removeStorageImage(supabase, prevConfig.overlayImagePath);
     }
 
     const nextConfig: InteractiveConfig = {
@@ -740,22 +711,12 @@ export default function Dashboard() {
     if (!step) return;
 
     const existing = parseStepHint(step.hints);
-    const prevPath = existing?.image ?? null;
-
-    const ext =
-      input.file.name && input.file.name.includes(".")
-        ? input.file.name.split(".").pop()
-        : "jpg";
-    const objectPath = `hints/${step.id}.${ext}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("images")
-      .upload(objectPath, input.file, { upsert: true });
-    if (uploadError) throw new Error(formatSupabaseError(uploadError));
-
-    if (prevPath && prevPath !== objectPath) {
-      await supabase.storage.from("images").remove([prevPath]);
-    }
+    const ext = fileExtensionFromName(input.file.name, "jpg");
+    const objectPath = await uploadStorageImage(supabase, {
+      file: input.file,
+      objectPath: `hints/${step.id}.${ext}`,
+      previousPath: existing?.image ?? null,
+    });
 
     const nextHints = serializeStepHint({
       text: existing?.text ?? "",
@@ -773,7 +734,7 @@ export default function Dashboard() {
     const existing = parseStepHint(step.hints);
     if (!existing?.image) return;
 
-    await supabase.storage.from("images").remove([existing.image]);
+    await removeStorageImage(supabase, existing.image);
 
     const nextHints = serializeStepHint({
       text: existing.text,
@@ -789,22 +750,12 @@ export default function Dashboard() {
     if (!step) return;
 
     const prevConfig = cameraOverlayConfigFromStep(step);
-    const prevPath = prevConfig.referenceImagePath ?? null;
-
-    const ext =
-      input.file.name && input.file.name.includes(".")
-        ? input.file.name.split(".").pop()
-        : "jpg";
-    const objectPath = `overlays/${step.id}-reference.${ext}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("images")
-      .upload(objectPath, input.file, { upsert: true });
-    if (uploadError) throw new Error(formatSupabaseError(uploadError));
-
-    if (prevPath && prevPath !== objectPath) {
-      await supabase.storage.from("images").remove([prevPath]);
-    }
+    const ext = fileExtensionFromName(input.file.name, "jpg");
+    const objectPath = await uploadStorageImage(supabase, {
+      file: input.file,
+      objectPath: `overlays/${step.id}-reference.${ext}`,
+      previousPath: prevConfig.referenceImagePath ?? null,
+    });
 
     const nextConfig: InteractiveConfig = {
       ...prevConfig,
@@ -820,7 +771,7 @@ export default function Dashboard() {
 
     const prevConfig = cameraOverlayConfigFromStep(step);
     if (prevConfig.referenceImagePath) {
-      await supabase.storage.from("images").remove([prevConfig.referenceImagePath]);
+      await removeStorageImage(supabase, prevConfig.referenceImagePath);
     }
 
     const nextConfig: InteractiveConfig = {
@@ -829,6 +780,65 @@ export default function Dashboard() {
     };
     await updateStep({ ...step, config: nextConfig });
     bumpImageCache(`step-overlay-ref:${step.id}`);
+  };
+
+  const jigsawConfigFromStep = (step: PuzzleStep): JigsawConfig => {
+    const raw = step.config;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const obj = raw as Record<string, unknown>;
+      if (obj.subtype === "jigsaw") {
+        return {
+          subtype: "jigsaw",
+          imagePath: typeof obj.imagePath === "string" ? obj.imagePath : "",
+          gridSize:
+            typeof obj.gridSize === "number" && obj.gridSize >= 2 && obj.gridSize <= 6
+              ? obj.gridSize
+              : 3,
+        };
+      }
+    }
+    return {
+      subtype: "jigsaw",
+      imagePath: "",
+      gridSize: 3,
+    };
+  };
+
+  const setStepJigsawImage = async (input: { stepId: string; file: File }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step) return;
+
+    const prevConfig = jigsawConfigFromStep(step);
+    const ext = fileExtensionFromName(input.file.name, "jpg");
+    const objectPath = await uploadStorageImage(supabase, {
+      file: input.file,
+      objectPath: `jigsaw/${step.id}.${ext}`,
+      previousPath: prevConfig.imagePath || null,
+    });
+
+    const nextConfig: InteractiveConfig = {
+      ...prevConfig,
+      imagePath: objectPath,
+    };
+    await updateStep({ ...step, config: nextConfig });
+    bumpImageCache(`step-jigsaw:${step.id}`);
+  };
+
+  const removeStepJigsawImage = async (input: { stepId: string }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step) return;
+
+    const prevConfig = jigsawConfigFromStep(step);
+    if (prevConfig.imagePath) {
+      await removeStorageImage(supabase, prevConfig.imagePath);
+    }
+
+    const nextConfig: InteractiveConfig = {
+      ...prevConfig,
+      imagePath: "",
+    };
+    await updateStep({ ...step, config: nextConfig });
+    bumpImageCache(`step-jigsaw:${step.id}`);
   };
 
   const symbolCodexConfigFromStep = (step: PuzzleStep): SymbolCodexConfig => {
@@ -1753,6 +1763,8 @@ export default function Dashboard() {
         onRemoveOverlayReferenceImage={removeStepOverlayReferenceImage}
         onSetHintImage={setStepHintImage}
         onRemoveHintImage={removeStepHintImage}
+        onSetJigsawImage={setStepJigsawImage}
+        onRemoveJigsawImage={removeStepJigsawImage}
         onUploadSymbolImages={uploadSymbolImages}
         onRemoveSymbolImage={removeSymbolImage}
         getImageUrl={getImageUrl}

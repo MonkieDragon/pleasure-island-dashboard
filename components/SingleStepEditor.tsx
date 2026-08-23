@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PuzzleStep,
   PuzzleStepType,
@@ -17,9 +17,6 @@ import {
   type JigsawConfig,
 } from "@/types/database";
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Box,
   Button,
   Checkbox,
@@ -35,7 +32,8 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import EditorAccordion from "@/components/EditorAccordion";
+import ImageUploadBlock from "@/components/ImageUploadBlock";
 
 type Draft = {
   type: PuzzleStepType;
@@ -70,6 +68,8 @@ type Props = {
   onRemoveOverlayReferenceImage: (input: { stepId: string }) => Promise<void> | void;
   onSetHintImage: (input: { stepId: string; file: File }) => Promise<void> | void;
   onRemoveHintImage: (input: { stepId: string }) => Promise<void> | void;
+  onSetJigsawImage: (input: { stepId: string; file: File }) => Promise<void> | void;
+  onRemoveJigsawImage: (input: { stepId: string }) => Promise<void> | void;
   onUploadSymbolImages: (input: {
     stepId: string;
     files: File[];
@@ -159,141 +159,6 @@ function toDraft(step: PuzzleStep): Draft {
   };
 }
 
-function ImageUploadBlock({
-  label,
-  imagePath,
-  imageCacheKey,
-  getImageUrl,
-  emptyLabel,
-  uploadLabel,
-  replaceLabel,
-  removeLabel,
-  caption,
-  objectFit = "cover",
-  onPickFile,
-  onRemove,
-}: {
-  label: string;
-  imagePath: string | null;
-  imageCacheKey?: string;
-  getImageUrl: (path: string, cacheKey?: string) => string;
-  emptyLabel: string;
-  uploadLabel: string;
-  replaceLabel: string;
-  removeLabel: string;
-  caption?: string;
-  objectFit?: "cover" | "contain";
-  onPickFile: (file: File) => Promise<void> | void;
-  onRemove: () => void;
-}) {
-  return (
-    <Box>
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        {label}
-      </Typography>
-      <Stack spacing={1}>
-        {imagePath ? (
-          <Box
-            sx={{
-              border: "1px solid",
-              borderColor: "divider",
-              borderRadius: 1,
-              p: 1,
-            }}
-          >
-            <Box
-              component="img"
-              key={`${imagePath}-${imageCacheKey ?? ""}`}
-              src={getImageUrl(imagePath, imageCacheKey)}
-              alt={label}
-              sx={{
-                width: "100%",
-                maxHeight: 180,
-                objectFit,
-                borderRadius: 1,
-                mb: 1,
-                ...(objectFit === "contain" ? { bgcolor: "action.hover" } : {}),
-              }}
-            />
-            <Button size="small" color="error" variant="text" onClick={() => void onRemove()}>
-              {removeLabel}
-            </Button>
-          </Box>
-        ) : (
-          <Typography variant="caption" color="text.secondary">
-            {emptyLabel}
-          </Typography>
-        )}
-
-        <Button component="label" variant="outlined" size="small">
-          {imagePath ? replaceLabel : uploadLabel}
-          <input
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (!file) return;
-              await onPickFile(file);
-            }}
-          />
-        </Button>
-        {caption ? (
-          <Typography variant="caption" color="text.secondary">
-            {caption}
-          </Typography>
-        ) : null}
-      </Stack>
-    </Box>
-  );
-}
-
-function EditorAccordion({
-  section,
-  expandedSection,
-  onExpand,
-  title,
-  subtitle,
-  children,
-}: {
-  section: EditorSection;
-  expandedSection: EditorSection | false;
-  onExpand: (section: EditorSection | false) => void;
-  title: string;
-  subtitle?: string;
-  children: ReactNode;
-}) {
-  return (
-    <Accordion
-      expanded={expandedSection === section}
-      onChange={(_, expanded) => onExpand(expanded ? section : false)}
-      disableGutters
-      sx={{
-        "&:before": { display: "none" },
-        boxShadow: "none",
-        border: "1px solid",
-        borderColor: "divider",
-        borderRadius: 1,
-        mb: 1,
-        "&.Mui-expanded": { mb: 1 },
-      }}
-    >
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle2">{title}</Typography>
-          {subtitle && expandedSection !== section ? (
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {subtitle}
-            </Typography>
-          ) : null}
-        </Box>
-      </AccordionSummary>
-      <AccordionDetails sx={{ pt: 0 }}>{children}</AccordionDetails>
-    </Accordion>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Interactive config sub-editor
 // ---------------------------------------------------------------------------
@@ -306,11 +171,14 @@ function InteractiveConfigEditor({
   stepId,
   overlayImagePath,
   referenceImagePath,
+  jigsawImagePath,
   getImageUrl,
   onPickOverlayFile,
   onRemoveOverlayImage,
   onPickReferenceFile,
   onRemoveReferenceImage,
+  onPickJigsawFile,
+  onRemoveJigsawImage,
   onUploadSymbolFiles,
   onRemoveSymbolAtIndex,
 }: {
@@ -321,11 +189,14 @@ function InteractiveConfigEditor({
   stepId: string;
   overlayImagePath: string | null;
   referenceImagePath: string | null;
+  jigsawImagePath: string | null;
   getImageUrl: (path: string, cacheKey?: string) => string;
   onPickOverlayFile: (file: File) => Promise<void> | void;
   onRemoveOverlayImage: () => void;
   onPickReferenceFile: (file: File) => Promise<void> | void;
   onRemoveReferenceImage: () => void;
+  onPickJigsawFile: (file: File) => Promise<void> | void;
+  onRemoveJigsawImage: () => void;
   onUploadSymbolFiles: (files: File[]) => Promise<void> | void;
   onRemoveSymbolAtIndex: (symbolIndex: number) => Promise<void> | void;
 }) {
@@ -346,7 +217,11 @@ function InteractiveConfigEditor({
         onChange({ subtype: "code_wheel" });
         break;
       case "jigsaw":
-        onChange({ subtype: "jigsaw", imagePath: "", gridSize: 3 });
+        onChange({
+          subtype: "jigsaw",
+          imagePath: jigsawImagePath ?? "",
+          gridSize: config.subtype === "jigsaw" ? config.gridSize : 3,
+        });
         break;
     }
   };
@@ -400,7 +275,15 @@ function InteractiveConfigEditor({
         </Typography>
       )}
       {config.subtype === "jigsaw" && (
-        <JigsawFields config={config} onChange={onChange} mobileInputProps={mobileInputProps} />
+        <JigsawFields
+          config={config}
+          onChange={onChange}
+          stepId={stepId}
+          jigsawImagePath={jigsawImagePath}
+          getImageUrl={getImageUrl}
+          onPickJigsawFile={onPickJigsawFile}
+          onRemoveJigsawImage={onRemoveJigsawImage}
+        />
       )}
 
       {answerError && <Typography variant="body2" color="error">{answerError}</Typography>}
@@ -635,22 +518,34 @@ function SymbolCodexFields({
 function JigsawFields({
   config,
   onChange,
-  mobileInputProps,
+  stepId,
+  jigsawImagePath,
+  getImageUrl,
+  onPickJigsawFile,
+  onRemoveJigsawImage,
 }: {
   config: JigsawConfig;
   onChange: (next: InteractiveConfig) => void;
-  mobileInputProps: Record<string, unknown>;
+  stepId: string;
+  jigsawImagePath: string | null;
+  getImageUrl: (path: string, cacheKey?: string) => string;
+  onPickJigsawFile: (file: File) => Promise<void> | void;
+  onRemoveJigsawImage: () => void;
 }) {
   return (
     <>
-      <TextField
-        label="Source image path (Supabase storage)"
-        value={config.imagePath}
-        onChange={(e) => onChange({ ...config, imagePath: e.target.value })}
-        size="small"
-        fullWidth
-        placeholder="e.g. jigsaw/temple-door.jpg"
-        {...mobileInputProps}
+      <ImageUploadBlock
+        label="Source image"
+        imagePath={jigsawImagePath}
+        imageCacheKey={jigsawImagePath ? `step-jigsaw:${stepId}` : undefined}
+        getImageUrl={getImageUrl}
+        emptyLabel="No source image yet."
+        uploadLabel="Upload source image"
+        replaceLabel="Replace source image"
+        removeLabel="Remove source image"
+        objectFit="contain"
+        onPickFile={onPickJigsawFile}
+        onRemove={onRemoveJigsawImage}
       />
       <FormControl size="small">
         <InputLabel id="jigsaw-grid-label">Grid size</InputLabel>
@@ -686,6 +581,8 @@ export default function SingleStepEditor({
   onRemoveOverlayReferenceImage,
   onSetHintImage,
   onRemoveHintImage,
+  onSetJigsawImage,
+  onRemoveJigsawImage,
   onUploadSymbolImages,
   onRemoveSymbolImage,
   getImageUrl,
@@ -799,6 +696,33 @@ export default function SingleStepEditor({
     });
   }, [step]);
 
+  // Keep jigsaw imagePath in sync after immediate upload/remove.
+  useEffect(() => {
+    if (!step) return;
+    const saved = parseInteractiveConfig(step.config);
+    if (saved.subtype !== "jigsaw") return;
+    const savedImagePath = saved.imagePath;
+    queueMicrotask(() => {
+      setDraftByStepId((prev) => {
+        const existing = prev[step.id];
+        if (!existing) return prev;
+        if (existing.interactiveConfig.subtype !== "jigsaw") return prev;
+        const cfg = existing.interactiveConfig;
+        if (cfg.imagePath === savedImagePath) return prev;
+        return {
+          ...prev,
+          [step.id]: {
+            ...existing,
+            interactiveConfig: {
+              ...cfg,
+              imagePath: savedImagePath,
+            },
+          },
+        };
+      });
+    });
+  }, [step]);
+
   useEffect(() => {
     queueMicrotask(() => {
       setAnswerError(null);
@@ -882,10 +806,13 @@ export default function SingleStepEditor({
         case "code_wheel":
           if (a === "") return "Code wheel needs an answer (the decoded word).";
           break;
-        case "jigsaw":
-          if (!cfg.imagePath) return "Jigsaw needs a source image path.";
+        case "jigsaw": {
+          const saved = parseInteractiveConfig(step?.config);
+          const imagePath = saved.subtype === "jigsaw" ? saved.imagePath : "";
+          if (!imagePath) return "Jigsaw needs a source image.";
           if (cfg.gridSize < 2 || cfg.gridSize > 6) return "Grid size must be between 2 and 6.";
           break;
+        }
       }
     }
     return null;
@@ -955,6 +882,10 @@ export default function SingleStepEditor({
     savedInteractiveConfig.subtype === "camera_overlay" &&
     savedInteractiveConfig.referenceImagePath
       ? savedInteractiveConfig.referenceImagePath
+      : null;
+  const jigsawImagePath =
+    savedInteractiveConfig.subtype === "jigsaw" && savedInteractiveConfig.imagePath
+      ? savedInteractiveConfig.imagePath
       : null;
   const savedHint = parseStepHint(step.hints);
   const hintImagePath = savedHint?.image ?? null;
@@ -1137,6 +1068,7 @@ export default function SingleStepEditor({
                 stepId={step.id}
                 overlayImagePath={overlayImagePath}
                 referenceImagePath={referenceImagePath}
+                jigsawImagePath={jigsawImagePath}
                 getImageUrl={getImageUrl}
                 onPickOverlayFile={async (file) => {
                   await onSetOverlayImage({ stepId: step.id, file });
@@ -1149,6 +1081,12 @@ export default function SingleStepEditor({
                 }}
                 onRemoveReferenceImage={() => {
                   void onRemoveOverlayReferenceImage({ stepId: step.id });
+                }}
+                onPickJigsawFile={async (file) => {
+                  await onSetJigsawImage({ stepId: step.id, file });
+                }}
+                onRemoveJigsawImage={() => {
+                  void onRemoveJigsawImage({ stepId: step.id });
                 }}
                 onUploadSymbolFiles={async (files) => {
                   await onUploadSymbolImages({ stepId: step.id, files });

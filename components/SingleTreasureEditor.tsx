@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import ImageUploadBlock from "@/components/ImageUploadBlock";
 import { Treasure } from "@/types/database";
 import {
   Box,
@@ -247,65 +248,22 @@ export default function SingleTreasureEditor({
           {...mobileInputProps}
         />
 
-        <Box>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Image
-          </Typography>
-          <Stack spacing={1}>
-            {imagePath ? (
-              <Box
-                sx={{
-                  border: "1px solid",
-                  borderColor: "divider",
-                  borderRadius: 1,
-                  p: 1,
-                }}
-              >
-                <Box
-                  component="img"
-                  src={getImageUrl(imagePath, `treasure-image:${treasure.id}`)}
-                  alt="Treasure"
-                  sx={{
-                    width: "100%",
-                    maxHeight: 180,
-                    objectFit: "cover",
-                    borderRadius: 1,
-                    mb: 1,
-                  }}
-                />
-                <Button
-                  size="small"
-                  color="error"
-                  variant="text"
-                  onClick={async () => {
-                    await onRemoveImage({ treasureId: treasure.id });
-                  }}
-                >
-                  Remove image
-                </Button>
-              </Box>
-            ) : (
-              <Typography variant="caption" color="text.secondary">
-                No image yet.
-              </Typography>
-            )}
-
-            <Button component="label" variant="outlined" size="small">
-              {imagePath ? "Replace image" : "Upload image"}
-              <input
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (!file) return;
-                  await onSetImage({ treasureId: treasure.id, file });
-                }}
-              />
-            </Button>
-          </Stack>
-        </Box>
+        <ImageUploadBlock
+          label="Image"
+          imagePath={imagePath}
+          imageCacheKey={imagePath ? `treasure-image:${treasure.id}` : undefined}
+          getImageUrl={getImageUrl}
+          emptyLabel="No image yet."
+          uploadLabel="Upload image"
+          replaceLabel="Replace image"
+          removeLabel="Remove image"
+          onPickFile={async (file) => {
+            await onSetImage({ treasureId: treasure.id, file });
+          }}
+          onRemove={async () => {
+            await onRemoveImage({ treasureId: treasure.id });
+          }}
+        />
 
         <Box>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>

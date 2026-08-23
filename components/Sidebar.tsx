@@ -1,4 +1,5 @@
 import { formatSupabaseError } from "@/lib/supabaseError";
+import ImageUploadBlock from "@/components/ImageUploadBlock";
 import { puzzleStepTypeLabel } from "@/lib/stepLabels";
 import type { InteractiveConfig } from "@/types/database";
 import { getCountryById, type Country } from "@/lib/countries";
@@ -29,6 +30,7 @@ import {
   ListItemButton,
   ListItemText,
   Paper,
+  Stack,
   TextField,
   Tooltip,
   Typography,
@@ -51,6 +53,9 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useMemo, useState } from "react";
 import ChainTrailMetadataEditor from "./ChainTrailMetadataEditor";
+import EditorAccordion from "@/components/EditorAccordion";
+
+type ChainSidebarSection = "details" | "steps";
 
 type Props = {
   countries: Country[];
@@ -500,6 +505,16 @@ export default function Sidebar({
   const [createTreasureMode, setCreateTreasureMode] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [expandedChainSection, setExpandedChainSection] = useState<
+    ChainSidebarSection | false
+  >("steps");
+
+  useEffect(() => {
+    if (!selectedChainId) return;
+    queueMicrotask(() => {
+      setExpandedChainSection("steps");
+    });
+  }, [selectedChainId]);
 
   useEffect(() => {
     if (!selectedChainId) return;
@@ -530,6 +545,17 @@ export default function Sidebar({
     () => draftSteps.filter((s) => s.latitude != null && s.longitude != null).length,
     [draftSteps],
   );
+
+  const chainDetailsSubtitle = selectedChain
+    ? [
+        selectedChain.image_path ? "Has image" : "No image",
+        selectedChain.ready_to_publish ? "Live" : "Draft",
+      ].join(" · ")
+    : undefined;
+
+  const chainStepsSubtitle = isDirty
+    ? `${draftSteps.length} steps · unsaved order`
+    : `${draftSteps.length} steps · ${stepsWithCoordsCount} on map`;
 
   const onDragEnd = (event: DragEndEvent) => {
     if (!selectedChainId) return;
@@ -906,38 +932,11 @@ export default function Sidebar({
             {headerLabel}
           </Typography>
         </Box>
-        {selectedRegionId ? (
-          <Box sx={{ mt: 1, display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+        {selectedRegionId && !selectedChainId ? (
+          <Box sx={{ mt: 1 }}>
             <Button size="small" variant="outlined" onClick={openRenameDialog}>
               Rename
             </Button>
-            {selectedChain ? (
-              <>
-                <Chip
-                  size="small"
-                  label={selectedChain.optional !== false ? "Optional" : "Main"}
-                  clickable={!flagBusy}
-                  disabled={flagBusy}
-                  onClick={toggleOptional}
-                  color="primary"
-                  variant={selectedChain.optional !== false ? "outlined" : "filled"}
-                  sx={
-                    selectedChain.optional !== false
-                      ? undefined
-                      : { fontWeight: 700 }
-                  }
-                />
-                <Chip
-                  size="small"
-                  label={selectedChain.is_eatery ? "Eatery" : "Attraction"}
-                  clickable={!flagBusy}
-                  disabled={flagBusy}
-                  onClick={toggleEatery}
-                  color="default"
-                  variant={selectedChain.is_eatery ? "filled" : "outlined"}
-                />
-              </>
-            ) : null}
           </Box>
         ) : null}
       </Box>
@@ -1240,128 +1239,194 @@ export default function Sidebar({
           }}
         >
           <Box sx={{ p: 1, overflowY: "auto", overflowX: "hidden", flex: 1 }}>
-            {selectedRegion && !selectedRegion.ready_to_publish ? (
-              <Alert severity="info" sx={{ mb: 1 }}>
-                This region is not published. This location is hidden from players
-                until the region is marked live.
-              </Alert>
-            ) : selectedChain && !selectedChain.ready_to_publish ? (
-              <Alert severity="info" sx={{ mb: 1 }}>
-                This location is a draft and is hidden from players until marked
-                live.
-              </Alert>
-            ) : null}
-            {selectedChain && (
-              <Box sx={{ px: 1, mb: 1 }}>
-                {selectedChain.image_path ? (
-                  <Box sx={{ mb: 1 }}>
-                    <Box
-                      component="img"
-                      src={getImageUrl(selectedChain.image_path, `chain-image:${selectedChain.id}`)}
-                      alt="Chain image"
-                      sx={{
-                        width: "100%",
-                        borderRadius: 2,
-                        maxHeight: 140,
-                        objectFit: "cover",
-                        display: "block",
-                      }}
-                    />
-                    <Button
-                      size="small"
-                      color="error"
-                      variant="text"
-                      onClick={async () => {
-                        await onRemoveChainImage({ chainId: selectedChain.id });
-                      }}
-                      sx={{ mt: 0.5 }}
-                    >
-                      Remove image
+            <EditorAccordion
+              section="details"
+              expandedSection={expandedChainSection}
+              onExpand={setExpandedChainSection}
+              title="Location details"
+              subtitle={chainDetailsSubtitle}
+            >
+              <Stack spacing={2}>
+                {selectedRegion && !selectedRegion.ready_to_publish ? (
+                  <Alert severity="info">
+                    This region is not published. This location is hidden from players
+                    until the region is marked live.
+                  </Alert>
+                ) : selectedChain && !selectedChain.ready_to_publish ? (
+                  <Alert severity="info">
+                    This location is a draft and is hidden from players until marked
+                    live.
+                  </Alert>
+                ) : null}
+
+                {selectedChain ? (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                    <Button size="small" variant="outlined" onClick={openRenameDialog}>
+                      Rename
                     </Button>
+                    <Chip
+                      size="small"
+                      label={selectedChain.optional !== false ? "Optional" : "Main"}
+                      clickable={!flagBusy}
+                      disabled={flagBusy}
+                      onClick={toggleOptional}
+                      color="primary"
+                      variant={selectedChain.optional !== false ? "outlined" : "filled"}
+                      sx={
+                        selectedChain.optional !== false
+                          ? undefined
+                          : { fontWeight: 700 }
+                      }
+                    />
+                    <Chip
+                      size="small"
+                      label={selectedChain.is_eatery ? "Eatery" : "Attraction"}
+                      clickable={!flagBusy}
+                      disabled={flagBusy}
+                      onClick={toggleEatery}
+                      color="default"
+                      variant={selectedChain.is_eatery ? "filled" : "outlined"}
+                    />
                   </Box>
                 ) : null}
 
-                <Button component="label" variant="outlined" size="small" fullWidth>
-                  {selectedChain.image_path ? "Replace chain image" : "Upload chain image"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = "";
-                      if (!file) return;
+                {selectedChain ? (
+                  <ImageUploadBlock
+                    label="Chain image"
+                    imagePath={selectedChain.image_path}
+                    imageCacheKey={
+                      selectedChain.image_path
+                        ? `chain-image:${selectedChain.id}`
+                        : undefined
+                    }
+                    getImageUrl={getImageUrl}
+                    emptyLabel="No chain image yet."
+                    uploadLabel="Upload chain image"
+                    replaceLabel="Replace chain image"
+                    removeLabel="Remove image"
+                    fullWidth
+                    maxHeight={140}
+                    onPickFile={async (file) => {
                       await onSetChainImage({ chainId: selectedChain.id, file });
                     }}
+                    onRemove={async () => {
+                      await onRemoveChainImage({ chainId: selectedChain.id });
+                    }}
                   />
+                ) : null}
+
+                {selectedChain ? (
+                  <ChainTrailMetadataEditor
+                    chain={selectedChain}
+                    onSave={async (metadata) => {
+                      await onUpdateChainTrailMetadata(selectedChain.id, metadata);
+                    }}
+                  />
+                ) : null}
+
+                <Button fullWidth variant="text" onClick={onZoomToChain}>
+                  Zoom to location
                 </Button>
-              </Box>
-            )}
+              </Stack>
+            </EditorAccordion>
 
-            {selectedChain ? (
-              <ChainTrailMetadataEditor
-                chain={selectedChain}
-                onSave={async (metadata) => {
-                  await onUpdateChainTrailMetadata(selectedChain.id, metadata);
-                }}
-              />
-            ) : null}
-
-            <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
-              Steps (drag handle to reorder)
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ px: 1, display: "block", mb: 1 }}>
-              Steps with coordinates: {stepsWithCoordsCount}/{draftSteps.length}
-            </Typography>
-
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={onDragEnd}
+            <EditorAccordion
+              section="steps"
+              expandedSection={expandedChainSection}
+              onExpand={setExpandedChainSection}
+              title="Steps"
+              subtitle={chainStepsSubtitle}
             >
-              <SortableContext
-                items={draftOrderedStepIds}
-                strategy={verticalListSortingStrategy}
-              >
-                <List dense sx={{ pb: 1 }}>
-                  {draftSteps.map((s, idx) => {
-                    const target = resolveTrailZoomCoords(draftSteps, idx);
-                    const hasOwn = hasValidMapCoords(s);
-                    const zoomDisabled = !target;
-                    const zoomTooltip = !target
-                      ? "No location on trail"
-                      : hasOwn
-                        ? "Zoom to this step"
-                        : "No marker — zooming to previous step on the trail";
-                    return (
-                    <SortableStepRow
-                      key={s.id}
-                      id={s.id}
-                      selected={selectedStepId === s.id}
-                      stepNumber={idx + 1}
-                      stepType={s.type}
-                      stepConfig={s.config as InteractiveConfig | null}
-                      stepContent={s.content}
-                      locked={pinnedInfoStepId === s.id}
-                      readyToPublish={s.ready_to_publish}
-                      onSetReadyToPublish={(ready) =>
-                        onSetStepReadyToPublish(s.id, ready)
-                      }
-                      zoomDisabled={zoomDisabled}
-                      zoomTooltip={zoomTooltip}
-                      onZoomMap={() => {
-                        if (!target) return;
-                        onZoomStepSpotlight(target[0], target[1]);
-                      }}
-                      onSelect={() => onSelectStep(s.id)}
-                      onHoverIn={() => onHoverChange({ kind: "step", id: s.id })}
-                      onHoverOut={() => onHoverChange(null)}
-                    />
-                    );
-                  })}
-                </List>
-              </SortableContext>
-            </DndContext>
+              <Stack spacing={1}>
+                <Typography variant="caption" color="text.secondary">
+                  Drag handle to reorder. Steps with coordinates: {stepsWithCoordsCount}/
+                  {draftSteps.length}
+                </Typography>
+
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={onDragEnd}
+                >
+                  <SortableContext
+                    items={draftOrderedStepIds}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <List dense sx={{ pb: 0 }}>
+                      {draftSteps.map((s, idx) => {
+                        const target = resolveTrailZoomCoords(draftSteps, idx);
+                        const hasOwn = hasValidMapCoords(s);
+                        const zoomDisabled = !target;
+                        const zoomTooltip = !target
+                          ? "No location on trail"
+                          : hasOwn
+                            ? "Zoom to this step"
+                            : "No marker — zooming to previous step on the trail";
+                        return (
+                          <SortableStepRow
+                            key={s.id}
+                            id={s.id}
+                            selected={selectedStepId === s.id}
+                            stepNumber={idx + 1}
+                            stepType={s.type}
+                            stepConfig={s.config as InteractiveConfig | null}
+                            stepContent={s.content}
+                            locked={pinnedInfoStepId === s.id}
+                            readyToPublish={s.ready_to_publish}
+                            onSetReadyToPublish={(ready) =>
+                              onSetStepReadyToPublish(s.id, ready)
+                            }
+                            zoomDisabled={zoomDisabled}
+                            zoomTooltip={zoomTooltip}
+                            onZoomMap={() => {
+                              if (!target) return;
+                              onZoomStepSpotlight(target[0], target[1]);
+                            }}
+                            onSelect={() => onSelectStep(s.id)}
+                            onHoverIn={() => onHoverChange({ kind: "step", id: s.id })}
+                            onHoverOut={() => onHoverChange(null)}
+                          />
+                        );
+                      })}
+                    </List>
+                  </SortableContext>
+                </DndContext>
+
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  disabled={createBusy}
+                  onClick={addStep}
+                >
+                  Add step
+                </Button>
+
+                {createError && !regionDialogOpen ? (
+                  <Typography variant="body2" color="error">
+                    {createError}
+                  </Typography>
+                ) : null}
+
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    disabled={!isDirty}
+                    onClick={saveDraft}
+                  >
+                    Save order
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    disabled={!isDirty}
+                    onClick={discardDraft}
+                  >
+                    Discard
+                  </Button>
+                </Box>
+              </Stack>
+            </EditorAccordion>
           </Box>
 
           <Box
@@ -1375,57 +1440,12 @@ export default function Sidebar({
               borderColor: "divider",
             }}
           >
-            <Button
-              fullWidth
-              variant="text"
-              sx={{ mb: 1 }}
-              onClick={onZoomToChain}
-            >
-              Zoom to location
-            </Button>
-            <Button
-              fullWidth
-              variant="outlined"
-              sx={{ mb: 1 }}
-              disabled={createBusy}
-              onClick={addStep}
-            >
-              Add step
-            </Button>
-            {createError && !regionDialogOpen && (
-              <Typography
-                variant="body2"
-                color="error"
-                sx={{ mb: 1, px: 0.5 }}
-              >
-                {createError}
-              </Typography>
-            )}
-            <Box sx={{ display: "flex", gap: 1 }}>
-              <Button
-                variant="contained"
-                fullWidth
-                disabled={!isDirty}
-                onClick={saveDraft}
-              >
-                Save order
-              </Button>
-              <Button
-                variant="outlined"
-                fullWidth
-                disabled={!isDirty}
-                onClick={discardDraft}
-              >
-                Discard
-              </Button>
-            </Box>
             {canDeleteChains ? (
               <Button
                 fullWidth
                 variant="outlined"
                 color="error"
                 disabled={createBusy}
-                sx={{ mt: 1 }}
                 onClick={() => {
                   setCreateError(null);
                   setDeleteChainDialogOpen(true);
