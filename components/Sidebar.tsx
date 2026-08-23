@@ -115,6 +115,8 @@ type Props = {
 
   onSetChainImage: (input: { chainId: string; file: File }) => Promise<void> | void;
   onRemoveChainImage: (input: { chainId: string }) => Promise<void> | void;
+  onSetRegionImage: (input: { regionId: string; file: File }) => Promise<void> | void;
+  onRemoveRegionImage: (input: { regionId: string }) => Promise<void> | void;
   getImageUrl: (path: string, cacheKey?: string) => string;
   /** When true, sidebar fills horizontal space (mobile list tab). */
   fullWidth?: boolean;
@@ -438,6 +440,8 @@ export default function Sidebar({
   onCreateTreasure,
   onSetChainImage,
   onRemoveChainImage,
+  onSetRegionImage,
+  onRemoveRegionImage,
   getImageUrl,
   fullWidth = false,
   canCreateRegions = true,
@@ -1150,6 +1154,32 @@ export default function Sidebar({
                     This region is not published. Locations inside it are hidden
                     from players until the region is marked live.
                   </Alert>
+                ) : null}
+                {selectedRegion ? (
+                  <Box sx={{ px: 1, mb: 1 }}>
+                    <ImageUploadBlock
+                      label="Region card image"
+                      imagePath={selectedRegion.image_path}
+                      imageCacheKey={
+                        selectedRegion.image_path
+                          ? `region-image:${selectedRegion.id}`
+                          : undefined
+                      }
+                      getImageUrl={getImageUrl}
+                      emptyLabel="No region card image yet."
+                      uploadLabel="Upload region card"
+                      replaceLabel="Replace region card"
+                      removeLabel="Remove image"
+                      fullWidth
+                      maxHeight={140}
+                      onPickFile={async (file) => {
+                        await onSetRegionImage({ regionId: selectedRegion.id, file });
+                      }}
+                      onRemove={async () => {
+                        await onRemoveRegionImage({ regionId: selectedRegion.id });
+                      }}
+                    />
+                  </Box>
                 ) : null}
                 <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
                   Locations

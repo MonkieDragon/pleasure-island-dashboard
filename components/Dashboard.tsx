@@ -601,6 +601,44 @@ export default function Dashboard() {
     bumpImageCache(`chain-image:${chain.id}`);
   };
 
+  const setRegionImage = async (input: { regionId: string; file: File }) => {
+    const region = regions.find((r) => r.id === input.regionId) || null;
+    if (!region) return;
+
+    const ext = fileExtensionFromName(input.file.name, "jpg");
+    const objectPath = await uploadStorageImage(supabase, {
+      file: input.file,
+      objectPath: `regions/${region.id}.${ext}`,
+      previousPath: region.image_path,
+    });
+
+    await supabase
+      .from("regions")
+      .update({ image_path: objectPath })
+      .eq("id", region.id);
+
+    setRegions((prev) =>
+      prev.map((r) => (r.id === region.id ? { ...r, image_path: objectPath } : r)),
+    );
+    bumpImageCache(`region-image:${region.id}`);
+  };
+
+  const removeRegionImage = async (input: { regionId: string }) => {
+    const region = regions.find((r) => r.id === input.regionId) || null;
+    if (!region) return;
+
+    if (region.image_path) {
+      await removeStorageImage(supabase, region.image_path);
+    }
+
+    await supabase.from("regions").update({ image_path: null }).eq("id", region.id);
+
+    setRegions((prev) =>
+      prev.map((r) => (r.id === region.id ? { ...r, image_path: null } : r)),
+    );
+    bumpImageCache(`region-image:${region.id}`);
+  };
+
   const removeChainImage = async (input: { chainId: string }) => {
     const chain = chains.find((c) => c.id === input.chainId) || null;
     if (!chain) return;
@@ -1623,6 +1661,8 @@ export default function Dashboard() {
       selectedTreasureId={selectedTreasureId}
       onSetChainImage={setChainImage}
       onRemoveChainImage={removeChainImage}
+      onSetRegionImage={setRegionImage}
+      onRemoveRegionImage={removeRegionImage}
       getImageUrl={getImageUrl}
       onZoomStepSpotlight={(lat, lng) => {
         setStepSpotlightCenter([lat, lng]);

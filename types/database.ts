@@ -98,6 +98,7 @@ export type CameraOverlayConfig = {
   overlayImagePath: string;
   referenceImagePath?: string;
   overlayOpacity?: number;
+  answerInputMode?: "text" | "number";
 };
 
 export type SymbolCodexConfig = {
@@ -109,6 +110,7 @@ export type SymbolCodexConfig = {
 
 export type CodeWheelConfig = {
   subtype: "code_wheel";
+  answerInputMode?: "text" | "number";
 };
 
 export type JigsawConfig = {

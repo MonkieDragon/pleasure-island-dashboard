@@ -29,6 +29,7 @@ import {
   Select,
   Slider,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from "@mui/material";
@@ -245,18 +246,34 @@ function InteractiveConfigEditor({
       </FormControl>
 
       {config.subtype === "camera_overlay" && (
-        <CameraOverlayFields
-          config={config}
-          onChange={onChange}
-          stepId={stepId}
-          overlayImagePath={overlayImagePath}
-          referenceImagePath={referenceImagePath}
-          getImageUrl={getImageUrl}
-          onPickOverlayFile={onPickOverlayFile}
-          onRemoveOverlayImage={onRemoveOverlayImage}
-          onPickReferenceFile={onPickReferenceFile}
-          onRemoveReferenceImage={onRemoveReferenceImage}
-        />
+        <>
+          <CameraOverlayFields
+            config={config}
+            onChange={onChange}
+            stepId={stepId}
+            overlayImagePath={overlayImagePath}
+            referenceImagePath={referenceImagePath}
+            getImageUrl={getImageUrl}
+            onPickOverlayFile={onPickOverlayFile}
+            onRemoveOverlayImage={onRemoveOverlayImage}
+            onPickReferenceFile={onPickReferenceFile}
+            onRemoveReferenceImage={onRemoveReferenceImage}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={config.answerInputMode === "number"}
+                onChange={(_, checked) =>
+                  onChange({
+                    ...config,
+                    answerInputMode: checked ? "number" : "text",
+                  })
+                }
+              />
+            }
+            label="Number keypad for answer"
+          />
+        </>
       )}
       {config.subtype === "symbol_codex" && (
         <SymbolCodexFields
@@ -270,9 +287,25 @@ function InteractiveConfigEditor({
         />
       )}
       {config.subtype === "code_wheel" && (
-        <Typography variant="caption" color="text.secondary">
-          The cipher disk always uses A-Z (outer) and 1-26 (inner). Put the cipher key and encoded message in the content/hints fields. The decoded word goes in the Answer field above.
-        </Typography>
+        <>
+          <Typography variant="caption" color="text.secondary">
+            The cipher disk always uses A-Z (outer) and 1-26 (inner). Put the cipher key and encoded message in the content/hints fields. The decoded word goes in the Answer field above.
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={config.answerInputMode === "number"}
+                onChange={(_, checked) =>
+                  onChange({
+                    ...config,
+                    answerInputMode: checked ? "number" : "text",
+                  })
+                }
+              />
+            }
+            label="Number keypad for answer"
+          />
+        </>
       )}
       {config.subtype === "jigsaw" && (
         <JigsawFields
