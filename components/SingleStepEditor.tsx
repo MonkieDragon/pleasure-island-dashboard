@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   PuzzleStep,
   PuzzleStepType,
@@ -29,7 +29,6 @@ import {
   Select,
   Slider,
   Stack,
-  Switch,
   TextField,
   Typography,
 } from "@mui/material";
@@ -246,34 +245,18 @@ function InteractiveConfigEditor({
       </FormControl>
 
       {config.subtype === "camera_overlay" && (
-        <>
-          <CameraOverlayFields
-            config={config}
-            onChange={onChange}
-            stepId={stepId}
-            overlayImagePath={overlayImagePath}
-            referenceImagePath={referenceImagePath}
-            getImageUrl={getImageUrl}
-            onPickOverlayFile={onPickOverlayFile}
-            onRemoveOverlayImage={onRemoveOverlayImage}
-            onPickReferenceFile={onPickReferenceFile}
-            onRemoveReferenceImage={onRemoveReferenceImage}
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={config.answerInputMode === "number"}
-                onChange={(_, checked) =>
-                  onChange({
-                    ...config,
-                    answerInputMode: checked ? "number" : "text",
-                  })
-                }
-              />
-            }
-            label="Number keypad for answer"
-          />
-        </>
+        <CameraOverlayFields
+          config={config}
+          onChange={onChange}
+          stepId={stepId}
+          overlayImagePath={overlayImagePath}
+          referenceImagePath={referenceImagePath}
+          getImageUrl={getImageUrl}
+          onPickOverlayFile={onPickOverlayFile}
+          onRemoveOverlayImage={onRemoveOverlayImage}
+          onPickReferenceFile={onPickReferenceFile}
+          onRemoveReferenceImage={onRemoveReferenceImage}
+        />
       )}
       {config.subtype === "symbol_codex" && (
         <SymbolCodexFields
@@ -287,25 +270,9 @@ function InteractiveConfigEditor({
         />
       )}
       {config.subtype === "code_wheel" && (
-        <>
-          <Typography variant="caption" color="text.secondary">
-            The cipher disk always uses A-Z (outer) and 1-26 (inner). Put the cipher key and encoded message in the content/hints fields. The decoded word goes in the Answer field above.
-          </Typography>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={config.answerInputMode === "number"}
-                onChange={(_, checked) =>
-                  onChange({
-                    ...config,
-                    answerInputMode: checked ? "number" : "text",
-                  })
-                }
-              />
-            }
-            label="Number keypad for answer"
-          />
-        </>
+        <Typography variant="caption" color="text.secondary">
+          The cipher disk always uses A-Z (outer) and 1-26 (inner). Put the cipher key and encoded message in the content/hints fields. The decoded word goes in the Answer field above.
+        </Typography>
       )}
       {config.subtype === "jigsaw" && (
         <JigsawFields
@@ -397,13 +364,6 @@ function CameraOverlayFields({
   );
 }
 
-function parseAnswerArrayText(text: string): number[] {
-  return text
-    .split(",")
-    .map((s) => parseInt(s.trim(), 10))
-    .filter((n) => !Number.isNaN(n));
-}
-
 function SymbolCodexFields({
   config,
   onChange,
@@ -421,16 +381,11 @@ function SymbolCodexFields({
   onUploadSymbolFiles: (files: File[]) => Promise<void> | void;
   onRemoveSymbolAtIndex: (symbolIndex: number) => Promise<void> | void;
 }) {
-  // Keep raw text while typing so trailing commas/spaces are not stripped by join().
-  const [answerText, setAnswerText] = useState(() => config.answerArray.join(", "));
-  const lastPushedSerialized = useRef(config.answerArray.join(","));
-
-  useEffect(() => {
-    const serialized = config.answerArray.join(",");
-    if (serialized === lastPushedSerialized.current) return;
-    lastPushedSerialized.current = serialized;
-    setAnswerText(config.answerArray.join(", "));
-  }, [config.answerArray]);
+  const maxIndex = Math.max(0, config.symbols.length - 1);
+  const slotValues = Array.from({ length: config.slotCount }, (_, i) => {
+    const v = config.answerArray[i] ?? 0;
+    return Math.min(Math.max(0, v), maxIndex);
+  });
 
   return (
     <>
@@ -523,25 +478,41 @@ function SymbolCodexFields({
         value={config.slotCount}
         onChange={(e) => {
           const slotCount = Math.max(1, parseInt(e.target.value) || 1);
-          onChange({ ...config, slotCount });
+          const answerArray = Array.from({ length: slotCount }, (_, i) => slotValues[i] ?? 0);
+          onChange({ ...config, slotCount, answerArray });
         }}
         size="small"
         {...mobileInputProps}
       />
-      <TextField
-        label="Answer array (comma-separated symbol indices, 0-based)"
-        value={answerText}
-        onChange={(e) => {
-          const text = e.target.value;
-          const answerArray = parseAnswerArrayText(text);
-          lastPushedSerialized.current = answerArray.join(",");
-          setAnswerText(text);
-          onChange({ ...config, answerArray });
-        }}
-        size="small"
-        placeholder="e.g. 0, 2, 1"
-        {...mobileInputProps}
-      />
+      <Box>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          Answer (one symbol per slot)
+        </Typography>
+        <Stack spacing={1}>
+          {slotValues.map((value, slot) => (
+            <FormControl key={slot} size="small" fullWidth>
+              <InputLabel id={`symbol-slot-${slot}`}>Slot {slot + 1}</InputLabel>
+              <Select
+                labelId={`symbol-slot-${slot}`}
+                label={`Slot ${slot + 1}`}
+                value={config.symbols.length === 0 ? "" : value}
+                disabled={config.symbols.length === 0}
+                onChange={(e) => {
+                  const next = [...slotValues];
+                  next[slot] = Number(e.target.value);
+                  onChange({ ...config, answerArray: next });
+                }}
+              >
+                {config.symbols.map((path, idx) => (
+                  <MenuItem key={`${path}-${idx}`} value={idx}>
+                    [{idx}]
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ))}
+        </Stack>
+      </Box>
     </>
   );
 }
@@ -1027,16 +998,41 @@ export default function SingleStepEditor({
                       (isQuestion || draft.type === "qr" || draft.type === "multiple_choice")
                     }
                   />
-                  {isQuestion && (
+                  {(isQuestion ||
+                    (isInteractive &&
+                      (draft.interactiveConfig.subtype === "camera_overlay" ||
+                        draft.interactiveConfig.subtype === "code_wheel"))) && (
                     <FormControlLabel
                       sx={{ mt: 0.5, flexShrink: 0, mr: 0 }}
                       control={
                         <Checkbox
                           size="small"
-                          checked={draft.type === "number"}
-                          onChange={(_, checked) =>
-                            setDraft({ type: checked ? "number" : "text" })
+                          checked={
+                            isQuestion
+                              ? draft.type === "number"
+                              : draft.interactiveConfig.subtype === "camera_overlay" ||
+                                  draft.interactiveConfig.subtype === "code_wheel"
+                                ? draft.interactiveConfig.answerInputMode === "number"
+                                : false
                           }
+                          onChange={(_, checked) => {
+                            if (isQuestion) {
+                              setDraft({ type: checked ? "number" : "text" });
+                              return;
+                            }
+                            const cfg = draft.interactiveConfig;
+                            if (
+                              cfg.subtype === "camera_overlay" ||
+                              cfg.subtype === "code_wheel"
+                            ) {
+                              setDraft({
+                                interactiveConfig: {
+                                  ...cfg,
+                                  answerInputMode: checked ? "number" : "text",
+                                },
+                              });
+                            }
+                          }}
                         />
                       }
                       label="Number"

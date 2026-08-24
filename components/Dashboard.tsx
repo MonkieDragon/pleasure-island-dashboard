@@ -751,6 +751,7 @@ export default function Dashboard() {
             typeof obj.referenceImagePath === "string" ? obj.referenceImagePath : undefined,
           overlayOpacity:
             typeof obj.overlayOpacity === "number" ? obj.overlayOpacity : 0.5,
+          answerInputMode: obj.answerInputMode === "number" ? "number" : "text",
         };
       }
     }
@@ -979,12 +980,11 @@ export default function Dashboard() {
         file.name && file.name.includes(".")
           ? file.name.split(".").pop()
           : "png";
-      const index = nextSymbols.length;
-      const objectPath = `symbols/${step.id}/${index}.${ext}`;
+      const objectPath = `symbols/${step.id}/${crypto.randomUUID()}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from("images")
-        .upload(objectPath, file, { upsert: true });
+        .upload(objectPath, file, { upsert: false });
       if (uploadError) throw new Error(formatSupabaseError(uploadError));
 
       nextSymbols.push(objectPath);
