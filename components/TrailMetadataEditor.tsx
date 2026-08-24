@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { PuzzleChain } from "@/types/database";
+import type { Trail } from "@/types/database";
 import {
   Box,
   FormControl,
@@ -13,7 +13,7 @@ import {
 } from "@mui/material";
 import Checkbox from "@mui/material/Checkbox";
 
-export type ChainTrailMetadata = {
+export type TrailMetadataDraft = {
   description: string;
   durationMinutes: string;
   distanceKm: string;
@@ -22,33 +22,40 @@ export type ChainTrailMetadata = {
 };
 
 type Props = {
-  chain: PuzzleChain;
-  onSave: (metadata: ChainTrailMetadata) => Promise<void> | void;
+  trail: Trail;
+  onSave: (metadata: TrailMetadataDraft) => Promise<void> | void;
 };
 
-function toDraft(chain: PuzzleChain): ChainTrailMetadata {
+function toDraft(trail: Trail): TrailMetadataDraft {
   return {
-    description: chain.description ?? "",
+    description: trail.description ?? "",
     durationMinutes:
-      chain.duration_minutes == null ? "" : String(chain.duration_minutes),
-    distanceKm: chain.distance_km == null ? "" : String(chain.distance_km),
+      trail.duration_minutes == null ? "" : String(trail.duration_minutes),
+    distanceKm: trail.distance_km == null ? "" : String(trail.distance_km),
     transportMode:
-      chain.transport_mode === "walk" || chain.transport_mode === "scooter"
-        ? chain.transport_mode
-        : "",
-    isFree: chain.is_free ?? true,
+      trail.transport_mode === "walk" || trail.transport_mode === "scooter"
+        ? trail.transport_mode
+        : "walk",
+    isFree: trail.is_free ?? true,
   };
 }
 
-export default function ChainTrailMetadataEditor({ chain, onSave }: Props) {
-  const [draft, setDraft] = useState<ChainTrailMetadata>(() => toDraft(chain));
+export default function TrailMetadataEditor({ trail, onSave }: Props) {
+  const [draft, setDraft] = useState<TrailMetadataDraft>(() => toDraft(trail));
 
   useEffect(() => {
-    setDraft(toDraft(chain));
-  }, [chain.id, chain.description, chain.duration_minutes, chain.distance_km, chain.transport_mode, chain.is_free]);
+    setDraft(toDraft(trail));
+  }, [
+    trail.id,
+    trail.description,
+    trail.duration_minutes,
+    trail.distance_km,
+    trail.transport_mode,
+    trail.is_free,
+  ]);
 
   return (
-    <Box sx={{ px: 1, mb: 2 }}>
+    <Box sx={{ mb: 1 }}>
       <Typography variant="overline" sx={{ color: "text.secondary" }}>
         Trail details (player-facing)
       </Typography>
@@ -65,7 +72,9 @@ export default function ChainTrailMetadataEditor({ chain, onSave }: Props) {
         <TextField
           label="Duration (minutes)"
           value={draft.durationMinutes}
-          onChange={(e) => setDraft((d) => ({ ...d, durationMinutes: e.target.value }))}
+          onChange={(e) =>
+            setDraft((d) => ({ ...d, durationMinutes: e.target.value }))
+          }
           size="small"
           type="number"
           fullWidth
@@ -79,19 +88,18 @@ export default function ChainTrailMetadataEditor({ chain, onSave }: Props) {
           fullWidth
         />
         <FormControl size="small" fullWidth>
-          <InputLabel id="transport-mode-label">Transport</InputLabel>
+          <InputLabel id="trail-transport-mode-label">Transport</InputLabel>
           <Select
-            labelId="transport-mode-label"
+            labelId="trail-transport-mode-label"
             label="Transport"
-            value={draft.transportMode}
+            value={draft.transportMode || "walk"}
             onChange={(e) =>
               setDraft((d) => ({
                 ...d,
-                transportMode: e.target.value as ChainTrailMetadata["transportMode"],
+                transportMode: e.target.value as TrailMetadataDraft["transportMode"],
               }))
             }
           >
-            <MenuItem value="">Not set</MenuItem>
             <MenuItem value="walk">Walking</MenuItem>
             <MenuItem value="scooter">Scooter</MenuItem>
           </Select>

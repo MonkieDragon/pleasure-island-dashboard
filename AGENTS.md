@@ -19,7 +19,7 @@ The goal is:
 
 ---
 
-# 🧭 1. PRODUCT OVERVIEW (WHAT THIS SYSTEM IS)
+# 1. PRODUCT OVERVIEW (WHAT THIS SYSTEM IS)
 
 This project is a **dashboard for a mobile real-world treasure hunting game**.
 
@@ -29,33 +29,35 @@ It is a **game authoring and operational tool** used to design physical-location
 
 ---
 
-## 🎮 GAME CONCEPT
+## GAME CONCEPT
 
 Players use a mobile app to:
 
-- travel to real-world locations
-- complete structured puzzle chains
-- follow sequential clues
+- select a region
+- select a **trail** (ordered playlist of locations)
+- travel to each location in order
+- complete ordered steps (clues) at each location
 - interact with real-world objects (QR codes, plaques, landmarks)
 
 ---
 
-## 🧩 CORE GAME LOOP
+## CORE GAME LOOP
 
 1. Player selects a region (e.g. Cebu, Siquijor)
-2. Player selects a chain (a real-world location)
-3. Player travels to that location
-4. Player completes ordered steps (clues)
-5. Steps may involve:
+2. Player selects a trail
+3. For each location on the trail (in order):
+   - Player travels to that location
+   - Player completes that location’s ordered steps
+4. Steps may involve:
    - reading instructions
    - scanning QR codes
    - physical observation tasks
    - answering questions
-6. Completion unlocks progression and future rewards
+5. Completing the trail unlocks progression and future rewards
 
 ---
 
-## 🧠 DESIGN INTENT
+## DESIGN INTENT
 
 This system is:
 
@@ -69,7 +71,7 @@ NOT:
 
 ---
 
-# 🔗 2. SIBLING APP & DATABASE OWNERSHIP
+# 2. SIBLING APP & DATABASE OWNERSHIP
 
 The player-facing mobile app lives in a **separate repo**: `pleasure-island` (often opened together in a multi-root Cursor workspace).
 
@@ -87,15 +89,32 @@ After any schema change:
 2. Regenerate types here (`npm run db:types`)
 3. Regenerate types in `pleasure-island` (`npm run supabase:types`)
 
-Domain terms (`region`, `chain`, `step`, `treasure`) must stay aligned with the player app. Do not rename or reinterpret them for either codebase.
+Domain terms must stay aligned with the player app. Do not rename or reinterpret them for either codebase.
 
 ---
 
-# 🧠 3. FRONTEND ARCHITECTURE
+# 3. DOMAIN TERMS (DO NOT RENAME)
+
+- **region** — geographic grouping (island / city area)
+- **chain** (`puzzle_chains`) — a **location**: a real-world map pin with ordered steps. UI says “location”.
+- **step** — ordered gameplay clue inside a location
+- **trail** (`trails` + `trail_stops`) — ordered playlist of locations. This is what players browse and play.
+- **treasure** — optional reward system (not core gameplay)
+
+Rules:
+
+- A location may appear on **at most one** trail (or none).
+- Locations not on a published trail stay in the dashboard atlas; players never see them.
+- Trail metadata (description, duration, distance, transport, free/paid, cover image) lives on **trails**, not on locations.
+- Never merge trail into chain or replace chain/step with “puzzle”.
 
 ---
 
-## 🧠 DASHBOARD (ROOT ORCHESTRATOR)
+# 4. FRONTEND ARCHITECTURE
+
+---
+
+## DASHBOARD (ROOT ORCHESTRATOR)
 
 The ONLY place allowed to:
 
@@ -106,13 +125,17 @@ The ONLY place allowed to:
 ### State owned by Dashboard:
 
 - regions[]
-- chains[]
+- chains[] (locations)
 - steps[]
 - treasures[]
+- trails[]
+- trailStops[]
 
 - selectedRegionId
 - selectedChainId
 - selectedStepId
+- selectedTreasureId
+- selectedTrailId
 
 ### FORBIDDEN:
 
@@ -122,17 +145,27 @@ The ONLY place allowed to:
 
 ---
 
-## 🧭 SIDEBAR
+## SIDEBAR
 
-Responsibilities:
-- reorder steps
+Region view sections:
+
+- Locations (add location)
+- Treasures (add treasure)
+- Trails (add trail)
+
+When a trail is selected: edit trail details + reorder stops (locations).
+
+When a location is selected: edit location + reorder steps.
 
 ---
 
-## 🗺 MAPVIEW (VISUAL LAYER ONLY)
+## MAPVIEW (VISUAL LAYER ONLY)
 
 Responsibilities:
 
+- region / location markers
+- step markers + step polyline when a location is selected
+- trail stop markers + trail polyline when a trail is selected
 
 ### FORBIDDEN:
 
@@ -143,12 +176,11 @@ Responsibilities:
 
 ---
 
-## ✏️ STEPEditor (STEPS ONLY)
+## STEP EDITOR (STEPS ONLY)
 
 Responsibilities:
 
 - edit step content/type
-
 
 ### Props:
 
@@ -160,16 +192,17 @@ Responsibilities:
 ### FORBIDDEN:
 
 - chain logic
+- trail logic
 - map logic
 - region logic
 
 ---
 
-# 🗺 4. MAP BEHAVIOUR RULES
+# 5. MAP BEHAVIOUR RULES
 
-## CHAINS
+## LOCATIONS (CHAINS)
 
-
+- markers at location lat/lng when browsing the region atlas
 
 ## STEPS
 
@@ -178,14 +211,18 @@ Responsibilities:
   - AND have latitude + longitude
   - draggable
 
-## TRAILS
+## TRAILS (PLAYER PLAYLIST)
 
-- derived from ordered steps
-- only shown when valid coordinates exist
+- when a trail is selected: markers for that trail’s locations + polyline in stop order
+
+## STEP TRAILS (WITHIN A LOCATION)
+
+- derived from ordered steps with coordinates
+- only shown when a location is selected and valid coordinates exist
 
 ---
 
-# 🔄 5. DATA FLOW RULE
+# 6. DATA FLOW RULE
 
 ```txt
 Supabase → Dashboard → Props → Components

@@ -7,6 +7,8 @@ type PublicTables = Database["public"]["Tables"];
 export type Region = PublicTables["regions"]["Row"];
 export type PuzzleChain = PublicTables["puzzle_chains"]["Row"];
 export type Treasure = PublicTables["treasures"]["Row"];
+export type Trail = PublicTables["trails"]["Row"];
+export type TrailStop = PublicTables["trail_stops"]["Row"];
 
 export type PuzzleStepRow = PublicTables["puzzle_steps"]["Row"];
 

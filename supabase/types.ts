@@ -96,54 +96,39 @@ export type Database = {
       puzzle_chains: {
         Row: {
           created_at: string | null
-          description: string | null
-          distance_km: number | null
-          duration_minutes: number | null
           id: string
           image_path: string | null
           is_eatery: boolean
-          is_free: boolean
           latitude: number
           longitude: number
           optional: boolean
           ready_to_publish: boolean
           region_id: string | null
           title: string
-          transport_mode: string | null
         }
         Insert: {
           created_at?: string | null
-          description?: string | null
-          distance_km?: number | null
-          duration_minutes?: number | null
           id?: string
           image_path?: string | null
           is_eatery?: boolean
-          is_free?: boolean
           latitude: number
           longitude: number
           optional?: boolean
           ready_to_publish?: boolean
           region_id?: string | null
           title: string
-          transport_mode?: string | null
         }
         Update: {
           created_at?: string | null
-          description?: string | null
-          distance_km?: number | null
-          duration_minutes?: number | null
           id?: string
           image_path?: string | null
           is_eatery?: boolean
-          is_free?: boolean
           latitude?: number
           longitude?: number
           optional?: boolean
           ready_to_publish?: boolean
           region_id?: string | null
           title?: string
-          transport_mode?: string | null
         }
         Relationships: [
           {
@@ -250,6 +235,92 @@ export type Database = {
         }
         Relationships: []
       }
+      trail_stops: {
+        Row: {
+          chain_id: string
+          id: string
+          order_index: number
+          trail_id: string
+        }
+        Insert: {
+          chain_id: string
+          id?: string
+          order_index: number
+          trail_id: string
+        }
+        Update: {
+          chain_id?: string
+          id?: string
+          order_index?: number
+          trail_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trail_stops_chain_id_fkey"
+            columns: ["chain_id"]
+            isOneToOne: true
+            referencedRelation: "puzzle_chains"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trail_stops_trail_id_fkey"
+            columns: ["trail_id"]
+            isOneToOne: false
+            referencedRelation: "trails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trails: {
+        Row: {
+          created_at: string
+          description: string | null
+          distance_km: number | null
+          duration_minutes: number | null
+          id: string
+          image_path: string | null
+          is_free: boolean
+          ready_to_publish: boolean
+          region_id: string
+          title: string
+          transport_mode: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          distance_km?: number | null
+          duration_minutes?: number | null
+          id?: string
+          image_path?: string | null
+          is_free?: boolean
+          ready_to_publish?: boolean
+          region_id: string
+          title: string
+          transport_mode?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          distance_km?: number | null
+          duration_minutes?: number | null
+          id?: string
+          image_path?: string | null
+          is_free?: boolean
+          ready_to_publish?: boolean
+          region_id?: string
+          title?: string
+          transport_mode?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trails_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       treasures: {
         Row: {
           assigned_at: string | null
@@ -320,6 +391,7 @@ export type Database = {
         Args: { object_name: string }
         Returns: string
       }
+      trail_region_id: { Args: { p_trail_id: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never

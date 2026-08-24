@@ -13,20 +13,22 @@ Do NOT introduce new abstractions.
 Do NOT rename core domain entities:
 
 - region
-- chain
+- chain (UI: location)
 - step
+- trail (ordered playlist of locations; player-facing)
 - treasure (optional system only)
 
 ---
 
-# 🧭 DOMAIN RULES
+# DOMAIN RULES
 
-- chain = real-world map location
-- step = ordered gameplay clue inside a chain
-- region = geographic grouping of chains
+- chain = real-world map location (UI says “location”)
+- step = ordered gameplay clue inside a chain/location
+- region = geographic grouping of locations
+- trail = ordered playlist of locations; what players browse and play
 - treasure = optional reward system (not core gameplay)
 
-Never merge or reinterpret these concepts.
+Never merge or reinterpret these concepts. A location belongs to at most one trail (or none).
 
 ---
 

@@ -21,6 +21,8 @@ import {
   PuzzleChain,
   PuzzleStep,
   Region,
+  Trail,
+  TrailStop,
   Treasure,
   parseStepHint,
   serializeStepHint,
@@ -165,6 +167,8 @@ export default function Dashboard() {
   const [steps, setSteps] = useState<PuzzleStep[]>([]);
   const [regionSteps, setRegionSteps] = useState<PuzzleStep[]>([]);
   const [treasures, setTreasures] = useState<Treasure[]>([]);
+  const [trails, setTrails] = useState<Trail[]>([]);
+  const [trailStops, setTrailStops] = useState<TrailStop[]>([]);
 
   const [selectedCountryId, setSelectedCountryId] = useState<string | null>(
     null,
@@ -175,6 +179,7 @@ export default function Dashboard() {
   const [selectedTreasureId, setSelectedTreasureId] = useState<string | null>(
     null,
   );
+  const [selectedTrailId, setSelectedTrailId] = useState<string | null>(null);
 
   const accessibleRegions = useMemo(() => {
     if (!accessOk) return [];
@@ -205,6 +210,12 @@ export default function Dashboard() {
       (c) => c.region_id != null && editorRegionIds.has(c.region_id),
     );
   }, [accessOk, isAdmin, editorRegionIds, chains]);
+
+  const visibleTrails = useMemo(() => {
+    if (!accessOk) return [];
+    if (isAdmin || editorRegionIds === null) return trails;
+    return trails.filter((t) => editorRegionIds.has(t.region_id));
+  }, [accessOk, isAdmin, editorRegionIds, trails]);
 
   const reloadAdminData = useCallback(async () => {
     const [pr, gr] = await Promise.all([
@@ -244,9 +255,11 @@ export default function Dashboard() {
       setSelectedChainId(null);
       setSelectedStepId(null);
       setSelectedTreasureId(null);
+      setSelectedTrailId(null);
       setSteps([]);
       setRegionSteps([]);
       setTreasures([]);
+      setTrailStops([]);
     }
   }, [accessOk, isAdmin, selectedRegionId, visibleRegions]);
 
@@ -263,6 +276,7 @@ export default function Dashboard() {
     | { type: "selectCountry"; countryId: string }
     | { type: "selectRegion"; regionId: string }
     | { type: "selectChain"; chainId: string }
+    | { type: "selectTrail"; trailId: string }
   >(null);
 
   const [mapHover, setMapHover] = useState<MapHover | null>(null);
@@ -322,6 +336,15 @@ export default function Dashboard() {
       .join(",");
   }, [visibleChains, selectedRegionId]);
 
+  const regionTrailIdsKey = useMemo(() => {
+    if (!selectedRegionId) return "";
+    return visibleTrails
+      .filter((t) => t.region_id === selectedRegionId)
+      .map((t) => t.id)
+      .sort()
+      .join(",");
+  }, [visibleTrails, selectedRegionId]);
+
   const orderedStepIdsForNav = useMemo(
     () => [...steps].sort((a, b) => a.order_index - b.order_index).map((s) => s.id),
     [steps],
@@ -355,6 +378,17 @@ export default function Dashboard() {
       .from("puzzle_chains")
       .select("*")
       .then(({ data }) => setChains((data || []) as PuzzleChain[]));
+  }, [accessOk]);
+
+  // ----------------------------
+  // LOAD TRAILS (once)
+  // ----------------------------
+  useEffect(() => {
+    if (!accessOk) return;
+    supabase
+      .from("trails")
+      .select("*")
+      .then(({ data }) => setTrails((data || []) as Trail[]));
   }, [accessOk]);
 
   // ----------------------------
@@ -403,7 +437,7 @@ export default function Dashboard() {
   }, [selectedChainId, steps, stepsLoadedForChainId]);
 
   // ----------------------------
-  // LOAD REGION STEPS + TREASURES (when region or its chain id set changes)
+  // LOAD REGION STEPS + TREASURES + TRAIL STOPS
   // ----------------------------
   useEffect(() => {
     if (!accessOk) return;
@@ -412,6 +446,7 @@ export default function Dashboard() {
         queueMicrotask(() => {
           setRegionSteps([]);
           setTreasures([]);
+          setTrailStops([]);
         });
         return;
       }
@@ -440,10 +475,29 @@ export default function Dashboard() {
       queueMicrotask(() => {
         setTreasures((treasureData || []) as Treasure[]);
       });
+
+      const regionTrailIds =
+        regionTrailIdsKey === ""
+          ? []
+          : regionTrailIdsKey.split(",").filter(Boolean);
+      if (regionTrailIds.length === 0) {
+        queueMicrotask(() => {
+          setTrailStops([]);
+        });
+      } else {
+        const { data: stopData } = await supabase
+          .from("trail_stops")
+          .select("*")
+          .in("trail_id", regionTrailIds)
+          .order("order_index", { ascending: true });
+        queueMicrotask(() => {
+          setTrailStops((stopData || []) as TrailStop[]);
+        });
+      }
     };
 
     void load();
-  }, [accessOk, selectedRegionId, regionChainIdsKey]);
+  }, [accessOk, selectedRegionId, regionChainIdsKey, regionTrailIdsKey]);
 
   const moveStep = async (id: string, lat: number, lng: number) => {
     const { error } = await supabase
@@ -1051,9 +1105,11 @@ export default function Dashboard() {
     setSelectedChainId(null);
     setSelectedStepId(null);
     setSelectedTreasureId(null);
+    setSelectedTrailId(null);
     setSteps([]);
     setRegionSteps([]);
     setTreasures([]);
+    setTrailStops([]);
     setMapFocusToken((n) => n + 1);
   };
 
@@ -1063,6 +1119,7 @@ export default function Dashboard() {
     setSelectedChainId(null);
     setSelectedStepId(null);
     setSelectedTreasureId(null);
+    setSelectedTrailId(null);
     setSteps([]);
   };
 
@@ -1073,9 +1130,11 @@ export default function Dashboard() {
     setSelectedChainId(null);
     setSelectedStepId(null);
     setSelectedTreasureId(null);
+    setSelectedTrailId(null);
     setSteps([]);
     setRegionSteps([]);
     setTreasures([]);
+    setTrailStops([]);
   };
 
   const applyBackToCountry = () => {
@@ -1084,9 +1143,11 @@ export default function Dashboard() {
     setSelectedChainId(null);
     setSelectedStepId(null);
     setSelectedTreasureId(null);
+    setSelectedTrailId(null);
     setSteps([]);
     setRegionSteps([]);
     setTreasures([]);
+    setTrailStops([]);
   };
 
   const applyBackOneLevel = () => {
@@ -1096,6 +1157,10 @@ export default function Dashboard() {
       setSelectedStepId(null);
       setSelectedTreasureId(null);
       setSteps([]);
+      return;
+    }
+    if (selectedTrailId) {
+      setSelectedTrailId(null);
       return;
     }
     if (selectedRegionId) {
@@ -1113,7 +1178,15 @@ export default function Dashboard() {
     if (nav.type === "selectChain") {
       setSelectedStepId(null);
       setSelectedTreasureId(null);
+      setSelectedTrailId(null);
       setSelectedChainId(nav.chainId);
+    }
+    if (nav.type === "selectTrail") {
+      setSelectedChainId(null);
+      setSelectedStepId(null);
+      setSelectedTreasureId(null);
+      setSteps([]);
+      setSelectedTrailId(nav.trailId);
     }
   };
 
@@ -1322,8 +1395,8 @@ export default function Dashboard() {
     );
   };
 
-  const updateChainTrailMetadata = async (
-    chainId: string,
+  const updateTrailMetadata = async (
+    trailId: string,
     metadata: {
       description: string;
       durationMinutes: string;
@@ -1338,33 +1411,200 @@ export default function Dashboard() {
       durationRaw === "" ? null : Math.max(0, parseInt(durationRaw, 10) || 0);
     const distance_km =
       distanceRaw === "" ? null : Math.max(0, Number(distanceRaw) || 0);
+    const transport_mode =
+      metadata.transportMode === "scooter" ? "scooter" : "walk";
 
     const { error } = await supabase
-      .from("puzzle_chains")
+      .from("trails")
       .update({
         description: metadata.description.trim() || null,
         duration_minutes,
         distance_km,
-        transport_mode: metadata.transportMode || null,
+        transport_mode,
         is_free: metadata.isFree,
       })
-      .eq("id", chainId);
+      .eq("id", trailId);
     if (error) throw new Error(formatSupabaseError(error));
 
-    setChains((prev) =>
-      prev.map((c) =>
-        c.id === chainId
+    setTrails((prev) =>
+      prev.map((t) =>
+        t.id === trailId
           ? {
-              ...c,
+              ...t,
               description: metadata.description.trim() || null,
               duration_minutes,
               distance_km,
-              transport_mode: metadata.transportMode || null,
+              transport_mode,
               is_free: metadata.isFree,
             }
-          : c,
+          : t,
       ),
     );
+  };
+
+  const createTrail = async (input: { title: string; regionId: string }) => {
+    const title = input.title.trim();
+    if (!title) throw new Error("Title is required.");
+    const { data, error } = await supabase
+      .from("trails")
+      .insert({
+        title,
+        region_id: input.regionId,
+        transport_mode: "walk",
+        is_free: true,
+        ready_to_publish: false,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(formatSupabaseError(error));
+    const trail = data as Trail;
+    setTrails((prev) => [...prev, trail]);
+    setSelectedTrailId(trail.id);
+    setSelectedChainId(null);
+    setSelectedStepId(null);
+    setSelectedTreasureId(null);
+    setSteps([]);
+  };
+
+  const renameTrail = async (trailId: string, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) throw new Error("Title is required.");
+    const { error } = await supabase
+      .from("trails")
+      .update({ title: trimmed })
+      .eq("id", trailId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setTrails((prev) =>
+      prev.map((t) => (t.id === trailId ? { ...t, title: trimmed } : t)),
+    );
+  };
+
+  const setTrailReadyToPublish = async (trailId: string, ready: boolean) => {
+    const { error } = await supabase
+      .from("trails")
+      .update({ ready_to_publish: ready })
+      .eq("id", trailId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setTrails((prev) =>
+      prev.map((t) =>
+        t.id === trailId ? { ...t, ready_to_publish: ready } : t,
+      ),
+    );
+  };
+
+  const setTrailImage = async (input: { trailId: string; file: File }) => {
+    const trail = trails.find((t) => t.id === input.trailId) || null;
+    if (!trail) return;
+    const ext = fileExtensionFromName(input.file.name, "jpg");
+    const objectPath = await uploadStorageImage(supabase, {
+      file: input.file,
+      objectPath: `trails/${trail.id}.${ext}`,
+      previousPath: trail.image_path,
+    });
+    const { error } = await supabase
+      .from("trails")
+      .update({ image_path: objectPath })
+      .eq("id", trail.id);
+    if (error) throw new Error(formatSupabaseError(error));
+    setTrails((prev) =>
+      prev.map((t) => (t.id === trail.id ? { ...t, image_path: objectPath } : t)),
+    );
+    bumpImageCache(`trail-image:${trail.id}`);
+  };
+
+  const removeTrailImage = async (input: { trailId: string }) => {
+    const trail = trails.find((t) => t.id === input.trailId) || null;
+    if (!trail) return;
+    if (trail.image_path) {
+      await removeStorageImage(supabase, trail.image_path);
+    }
+    await supabase.from("trails").update({ image_path: null }).eq("id", trail.id);
+    setTrails((prev) =>
+      prev.map((t) => (t.id === trail.id ? { ...t, image_path: null } : t)),
+    );
+    bumpImageCache(`trail-image:${trail.id}`);
+  };
+
+  const deleteTrail = async (trailId: string) => {
+    const trail = trails.find((t) => t.id === trailId) || null;
+    if (!trail) return;
+    if (trail.image_path) {
+      await supabase.storage.from("images").remove([trail.image_path]);
+    }
+    const { error } = await supabase.from("trails").delete().eq("id", trailId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setTrails((prev) => prev.filter((t) => t.id !== trailId));
+    setTrailStops((prev) => prev.filter((s) => s.trail_id !== trailId));
+    setSelectedTrailId((prev) => (prev === trailId ? null : prev));
+  };
+
+  const addTrailStop = async (input: { trailId: string; chainId: string }) => {
+    const existing = trailStops.filter((s) => s.trail_id === input.trailId);
+    const maxOrder = existing.reduce((m, s) => Math.max(m, s.order_index), -1);
+    const { data, error } = await supabase
+      .from("trail_stops")
+      .insert({
+        trail_id: input.trailId,
+        chain_id: input.chainId,
+        order_index: maxOrder + 1,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(formatSupabaseError(error));
+    setTrailStops((prev) => [...prev, data as TrailStop]);
+  };
+
+  const removeTrailStop = async (stopId: string) => {
+    const stop = trailStops.find((s) => s.id === stopId) || null;
+    if (!stop) return;
+    const remaining = trailStops
+      .filter((s) => s.trail_id === stop.trail_id && s.id !== stopId)
+      .slice()
+      .sort((a, b) => a.order_index - b.order_index);
+
+    const { error } = await supabase.from("trail_stops").delete().eq("id", stopId);
+    if (error) throw new Error(formatSupabaseError(error));
+
+    await Promise.all(
+      remaining.map((s, order_index) =>
+        supabase.from("trail_stops").update({ order_index }).eq("id", s.id),
+      ),
+    );
+
+    setTrailStops((prev) => {
+      const filtered = prev.filter((s) => s.id !== stopId);
+      const byId = new Map(filtered.map((s) => [s.id, s] as const));
+      const renumbered = remaining.map((s, idx) => {
+        const row = byId.get(s.id);
+        return row ? ({ ...row, order_index: idx } as TrailStop) : null;
+      });
+      const other = filtered.filter((s) => s.trail_id !== stop.trail_id);
+      return [
+        ...other,
+        ...renumbered.filter((x): x is TrailStop => x !== null),
+      ];
+    });
+  };
+
+  const reorderTrailStops = async (orderedStopIds: string[]) => {
+    if (!selectedTrailId) return;
+    await Promise.all(
+      orderedStopIds.map((id, order_index) =>
+        supabase.from("trail_stops").update({ order_index }).eq("id", id),
+      ),
+    );
+    setTrailStops((prev) => {
+      const byId = new Map(prev.map((s) => [s.id, s] as const));
+      const updated = orderedStopIds.map((id, idx) => {
+        const s = byId.get(id);
+        return s ? ({ ...s, order_index: idx } as TrailStop) : null;
+      });
+      const other = prev.filter((s) => s.trail_id !== selectedTrailId);
+      return [
+        ...other,
+        ...updated.filter((x): x is TrailStop => x !== null),
+      ];
+    });
   };
 
   const renameRegion = async (regionId: string, name: string) => {
@@ -1483,6 +1723,7 @@ export default function Dashboard() {
 
     setChains((prev) => prev.filter((c) => c.id !== chainId));
     setRegionSteps((prev) => prev.filter((s) => s.chain_id !== chainId));
+    setTrailStops((prev) => prev.filter((s) => s.chain_id !== chainId));
     setStepOrderDraft((prev) => (prev?.chainId === chainId ? null : prev));
     setPlacement((p) => {
       if (!p) return p;
@@ -1586,6 +1827,7 @@ export default function Dashboard() {
   const onSelectStepFromUi = useCallback(
     (id: string) => {
       setSelectedTreasureId(null);
+      setSelectedTrailId(null);
       setSelectedStepId(id);
       if (isMobile) setMobileLowerTab(1);
     },
@@ -1595,6 +1837,9 @@ export default function Dashboard() {
   const onSelectTreasureFromUi = useCallback(
     (id: string) => {
       setSelectedStepId(null);
+      setSelectedChainId(null);
+      setSelectedTrailId(null);
+      setSteps([]);
       setSelectedTreasureId(id);
       if (isMobile) setMobileLowerTab(1);
     },
@@ -1655,14 +1900,19 @@ export default function Dashboard() {
       chains={visibleChains}
       steps={steps}
       treasures={treasures}
+      trails={visibleTrails}
+      trailStops={trailStops}
       selectedRegionId={selectedRegionId}
       selectedChainId={selectedChainId}
       selectedStepId={selectedStepId}
       selectedTreasureId={selectedTreasureId}
+      selectedTrailId={selectedTrailId}
       onSetChainImage={setChainImage}
       onRemoveChainImage={removeChainImage}
       onSetRegionImage={setRegionImage}
       onRemoveRegionImage={removeRegionImage}
+      onSetTrailImage={setTrailImage}
+      onRemoveTrailImage={removeTrailImage}
       getImageUrl={getImageUrl}
       onZoomStepSpotlight={(lat, lng) => {
         setStepSpotlightCenter([lat, lng]);
@@ -1675,18 +1925,22 @@ export default function Dashboard() {
       }
       onSelectRegion={(regionId) => maybeNavigate({ type: "selectRegion", regionId })}
       onSelectChain={(chainId) => maybeNavigate({ type: "selectChain", chainId })}
+      onSelectTrail={(trailId) => maybeNavigate({ type: "selectTrail", trailId })}
       onSelectStep={onSelectStepFromUi}
       onSelectTreasure={onSelectTreasureFromUi}
       onReorderSteps={reorderSteps}
       onStepsOrderDraftChange={handleStepsOrderDraftChange}
       onCreateRegion={createRegion}
       onCreateChain={createChain}
+      onCreateTrail={createTrail}
       onSetRegionReadyToPublish={setRegionReadyToPublish}
       onSetChainReadyToPublish={setChainReadyToPublish}
+      onSetTrailReadyToPublish={setTrailReadyToPublish}
       onSetStepReadyToPublish={setStepReadyToPublish}
       onCreateStep={createStep}
       onZoomToRegion={() => setMapFocusToken((n) => n + 1)}
       onZoomToChain={() => setMapFocusToken((n) => n + 1)}
+      onZoomToTrail={() => setMapFocusToken((n) => n + 1)}
       newChainDraft={newChainDraft}
       onNewChainDraftChange={setNewChainDraft}
       newChainPlacementActive={newChainPlacementActive}
@@ -1711,11 +1965,16 @@ export default function Dashboard() {
       canCreateRegions={isAdmin}
       canDeleteChains={accessOk}
       onDeleteChain={deleteChain}
+      onDeleteTrail={deleteTrail}
       onRenameRegion={renameRegion}
       onRenameChain={renameChain}
+      onRenameTrail={renameTrail}
       onSetChainOptional={setChainOptional}
       onSetChainIsEatery={setChainIsEatery}
-      onUpdateChainTrailMetadata={updateChainTrailMetadata}
+      onUpdateTrailMetadata={updateTrailMetadata}
+      onAddTrailStop={addTrailStop}
+      onRemoveTrailStop={removeTrailStop}
+      onReorderTrailStops={reorderTrailStops}
       fullWidth={fullWidth}
     />
   );
@@ -1728,10 +1987,13 @@ export default function Dashboard() {
       steps={steps}
       regionSteps={regionSteps}
       treasures={treasures}
+      trails={visibleTrails}
+      trailStops={trailStops}
       focusToken={mapFocusToken}
       selectedCountryId={selectedCountryId}
       selectedRegionId={selectedRegionId}
       selectedChainId={selectedChainId}
+      selectedTrailId={selectedTrailId}
       chainStepsReady={!!selectedChainId && stepsLoadedForChainId === selectedChainId}
       selectedStepId={selectedStepId}
       selectedTreasureId={selectedTreasureId}
@@ -1745,6 +2007,7 @@ export default function Dashboard() {
       }
       onSelectRegion={(regionId) => maybeNavigate({ type: "selectRegion", regionId })}
       onSelectChain={(chainId) => maybeNavigate({ type: "selectChain", chainId })}
+      onSelectTrail={(trailId) => maybeNavigate({ type: "selectTrail", trailId })}
       onSelectStep={onSelectStepFromUi}
       onSelectTreasure={onSelectTreasureFromUi}
       onMoveStep={moveStep}

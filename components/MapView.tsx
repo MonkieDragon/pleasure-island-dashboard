@@ -1,7 +1,7 @@
 // Clean MapView implementation (avoids duplicate-file issue).
 "use client";
 
-import { PuzzleChain, PuzzleStep, Region, Treasure } from "@/types/database";
+import { PuzzleChain, PuzzleStep, Region, Trail, TrailStop, Treasure } from "@/types/database";
 import type { MapHover } from "@/types/mapUi";
 import type { Country } from "@/lib/countries";
 import {
@@ -81,10 +81,13 @@ type Props = {
   /** Loaded for region context; map uses `steps` for the selected chain. */
   regionSteps: PuzzleStep[];
   treasures: Treasure[];
+  trails: Trail[];
+  trailStops: TrailStop[];
   focusToken: number;
   selectedCountryId: string | null;
   selectedRegionId: string | null;
   selectedChainId: string | null;
+  selectedTrailId: string | null;
   /** True once the steps fetch for the selected chain has completed. */
   chainStepsReady: boolean;
   selectedStepId: string | null;
@@ -102,6 +105,7 @@ type Props = {
   onSelectCountry: (id: string) => void;
   onSelectRegion: (id: string) => void;
   onSelectChain: (id: string) => void;
+  onSelectTrail: (id: string) => void;
   onSelectStep: (id: string) => void;
   onSelectTreasure: (id: string) => void;
   onMoveStep: (id: string, lat: number, lng: number) => void;
@@ -118,7 +122,7 @@ type Props = {
 
   /** When false, no geolocation UI or API calls (desktop). */
   enableUserLocation: boolean;
-  /** Bumped when map container size may change (e.g. mobile layout). */
+  /** Remount/invalidate Leaflet after mobile tab or keyboard layout changes. */
   invalidateSizeKey?: number;
 };
 
@@ -278,10 +282,12 @@ export default function MapView(props: Props) {
     chains,
     steps,
     treasures,
+    trailStops,
     focusToken,
     selectedCountryId,
     selectedRegionId,
     selectedChainId,
+    selectedTrailId,
     chainStepsReady,
     selectedStepId,
     selectedTreasureId,
@@ -326,9 +332,33 @@ export default function MapView(props: Props) {
   );
   const showChainMarkers =
     !!selectedRegionId &&
+    !selectedTrailId &&
     (!selectedChainId || visibleStepsWithCoords.length === 0);
 
-  const trail = visibleStepsWithCoords
+  const selectedTrailStops = useMemo(() => {
+    if (!selectedTrailId) return [];
+    return trailStops
+      .filter((s) => s.trail_id === selectedTrailId)
+      .slice()
+      .sort((a, b) => a.order_index - b.order_index);
+  }, [trailStops, selectedTrailId]);
+
+  const trailStopChains = useMemo(() => {
+    const byId = new Map(regionChains.map((c) => [c.id, c] as const));
+    return selectedTrailStops
+      .map((s) => byId.get(s.chain_id) || null)
+      .filter((c): c is PuzzleChain => c !== null);
+  }, [selectedTrailStops, regionChains]);
+
+  const trailRoute = useMemo(
+    () =>
+      trailStopChains.map(
+        (c) => [c.latitude, c.longitude] as [number, number],
+      ),
+    [trailStopChains],
+  );
+
+  const stepTrail = visibleStepsWithCoords
     .slice()
     .sort((a, b) => a.order_index - b.order_index)
     .map((s) => [s.latitude, s.longitude] as [number, number]);
@@ -373,13 +403,16 @@ export default function MapView(props: Props) {
     [regionChains, selectedChainId],
   );
 
-  const viewLevel: "countries" | "country" | "region" | "chain" = atCountriesRoot
-    ? "countries"
-    : atCountryLevel
-      ? "country"
-      : selectedChainId
-        ? "chain"
-        : "region";
+  const viewLevel: "countries" | "country" | "region" | "chain" | "trail" =
+    atCountriesRoot
+      ? "countries"
+      : atCountryLevel
+        ? "country"
+        : selectedChainId
+          ? "chain"
+          : selectedTrailId
+            ? "trail"
+            : "region";
 
   const chainAnchor: LatLng | null = useMemo(() => {
     if (
@@ -432,6 +465,20 @@ export default function MapView(props: Props) {
           : null;
     }
 
+    if (viewLevel === "trail") {
+      const pts = sanitizeLatLngPoints(trailRoute);
+      return pts.length >= 2
+        ? {
+            kind: "fitBounds",
+            points: pts,
+            paddingPx: 48,
+            maxZoom: CHAIN_FIT_MAX_ZOOM,
+          }
+        : pts.length === 1
+          ? { kind: "setView", center: pts[0], zoom: CHAIN_FOCUS_ZOOM }
+          : null;
+    }
+
     if (!chainStepsReady) return null;
 
     const stepPts = sanitizeLatLngPoints(chainStepPoints);
@@ -459,6 +506,7 @@ export default function MapView(props: Props) {
     countryPoints,
     regionPoints,
     selectedCountryId,
+    trailRoute,
     viewLevel,
   ]);
 
@@ -468,12 +516,15 @@ export default function MapView(props: Props) {
       return `country:${selectedCountryId ?? "none"}:focus:${focusToken}`;
     if (viewLevel === "region")
       return `region:${selectedRegionId ?? "none"}:focus:${focusToken}`;
+    if (viewLevel === "trail")
+      return `trail:${selectedTrailId ?? "none"}:focus:${focusToken}`;
     return `chain:${selectedChainId ?? "none"}:ready:${chainStepsReady ? 1 : 0}:focus:${focusToken}`;
   }, [
     viewLevel,
     selectedCountryId,
     selectedRegionId,
     selectedChainId,
+    selectedTrailId,
     chainStepsReady,
     focusToken,
   ]);
@@ -639,6 +690,33 @@ export default function MapView(props: Props) {
               );
             })}
 
+          {!!selectedTrailId &&
+            trailStopChains.map((c) => {
+              const hovered = hoverMatch(mapHover, "chain", c.id);
+              const icon = pickChainIcon({
+                isEatery: !!c.is_eatery,
+                optional: c.optional !== false,
+                readyToPublish: !!c.ready_to_publish,
+                selected: false,
+                hovered,
+              });
+              return (
+                <Marker
+                  key={`trail-stop-${c.id}`}
+                  position={[c.latitude, c.longitude]}
+                  icon={icon}
+                  eventHandlers={{
+                    click: () => onSelectChain(c.id),
+                    mouseover: () =>
+                      onHoverChange({ kind: "chain", id: c.id }),
+                    mouseout: () => onHoverChange(null),
+                  }}
+                />
+              );
+            })}
+
+          {trailRoute.length > 1 && <Polyline positions={trailRoute} />}
+
           {visibleStepsWithCoords.map((s) => {
             const hovered = hoverMatch(mapHover, "step", s.id);
             const selected = selectedStepId === s.id;
@@ -665,7 +743,7 @@ export default function MapView(props: Props) {
             );
           })}
 
-          {trail.length > 1 && <Polyline positions={trail} />}
+          {stepTrail.length > 1 && <Polyline positions={stepTrail} />}
 
           {enableUserLocation && userLocation && (
             <CircleMarker

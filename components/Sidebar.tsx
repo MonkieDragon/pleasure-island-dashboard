@@ -7,10 +7,13 @@ import {
   PuzzleChain,
   PuzzleStep,
   Region,
+  Trail,
+  TrailStop,
   Treasure,
 } from "@/types/database";
 import type { MapHover } from "@/types/mapUi";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import LockIcon from "@mui/icons-material/Lock";
 import ZoomInMapIcon from "@mui/icons-material/ZoomInMap";
@@ -29,6 +32,7 @@ import {
   List,
   ListItemButton,
   ListItemText,
+  MenuItem,
   Paper,
   Stack,
   TextField,
@@ -52,10 +56,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useMemo, useState } from "react";
-import ChainTrailMetadataEditor from "./ChainTrailMetadataEditor";
+import TrailMetadataEditor from "./TrailMetadataEditor";
 import EditorAccordion from "@/components/EditorAccordion";
 
 type ChainSidebarSection = "details" | "steps";
+type TrailSidebarSection = "details" | "stops";
 
 type Props = {
   countries: Country[];
@@ -64,16 +69,20 @@ type Props = {
   chains: PuzzleChain[];
   steps: PuzzleStep[];
   treasures: Treasure[];
+  trails: Trail[];
+  trailStops: TrailStop[];
   selectedRegionId: string | null;
   selectedChainId: string | null;
   selectedStepId: string | null;
   selectedTreasureId: string | null;
+  selectedTrailId: string | null;
   onZoomStepSpotlight: (lat: number, lng: number) => void;
   onHoverChange: (next: MapHover | null) => void;
   onBack: () => void;
   onSelectCountry: (id: string) => void;
   onSelectRegion: (id: string) => void;
   onSelectChain: (id: string) => void;
+  onSelectTrail: (id: string) => void;
   onSelectStep: (id: string) => void;
   onSelectTreasure: (id: string) => void;
   onReorderSteps: (orderedStepIds: string[]) => void;
@@ -89,12 +98,15 @@ type Props = {
     latitude: number;
     longitude: number;
   }) => Promise<void>;
+  onCreateTrail: (input: { title: string; regionId: string }) => Promise<void>;
   onCreateStep: (input: { chainId: string }) => Promise<void>;
   onSetRegionReadyToPublish: (id: string, ready: boolean) => Promise<void>;
   onSetChainReadyToPublish: (id: string, ready: boolean) => Promise<void>;
+  onSetTrailReadyToPublish: (id: string, ready: boolean) => Promise<void>;
   onSetStepReadyToPublish: (id: string, ready: boolean) => Promise<void>;
   onZoomToRegion: () => void;
   onZoomToChain: () => void;
+  onZoomToTrail: () => void;
 
   newChainDraft: { title: string; lat: string; lng: string };
   onNewChainDraftChange: (next: { title: string; lat: string; lng: string }) => void;
@@ -117,6 +129,8 @@ type Props = {
   onRemoveChainImage: (input: { chainId: string }) => Promise<void> | void;
   onSetRegionImage: (input: { regionId: string; file: File }) => Promise<void> | void;
   onRemoveRegionImage: (input: { regionId: string }) => Promise<void> | void;
+  onSetTrailImage: (input: { trailId: string; file: File }) => Promise<void> | void;
+  onRemoveTrailImage: (input: { trailId: string }) => Promise<void> | void;
   getImageUrl: (path: string, cacheKey?: string) => string;
   /** When true, sidebar fills horizontal space (mobile list tab). */
   fullWidth?: boolean;
@@ -125,12 +139,14 @@ type Props = {
   /** When false, hide delete location (non-staff). */
   canDeleteChains?: boolean;
   onDeleteChain: (chainId: string) => Promise<void>;
+  onDeleteTrail: (trailId: string) => Promise<void>;
   onRenameRegion: (regionId: string, name: string) => Promise<void>;
   onRenameChain: (chainId: string, title: string) => Promise<void>;
+  onRenameTrail: (trailId: string, title: string) => Promise<void>;
   onSetChainOptional: (chainId: string, optional: boolean) => Promise<void>;
   onSetChainIsEatery: (chainId: string, isEatery: boolean) => Promise<void>;
-  onUpdateChainTrailMetadata: (
-    chainId: string,
+  onUpdateTrailMetadata: (
+    trailId: string,
     metadata: {
       description: string;
       durationMinutes: string;
@@ -139,6 +155,9 @@ type Props = {
       isFree: boolean;
     },
   ) => Promise<void>;
+  onAddTrailStop: (input: { trailId: string; chainId: string }) => Promise<void>;
+  onRemoveTrailStop: (stopId: string) => Promise<void>;
+  onReorderTrailStops: (orderedStopIds: string[]) => Promise<void>;
 };
 
 function stepContentPreview(content: string | null): string {
@@ -257,6 +276,87 @@ function resolveTrailZoomCoords(
     return [s.latitude as number, s.longitude as number];
   }
   return null;
+}
+
+function SortableTrailStopRow({
+  id,
+  stopNumber,
+  title,
+  onRemove,
+  onSelectLocation,
+}: {
+  id: string;
+  stopNumber: number;
+  title: string;
+  onRemove: () => void;
+  onSelectLocation: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.55 : 1,
+  } as const;
+
+  return (
+    <Box ref={setNodeRef} style={style}>
+      <ListItemButton
+        onClick={onSelectLocation}
+        sx={{
+          mb: 0.25,
+          py: 1,
+          borderRadius: 2,
+          userSelect: "none",
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          px: 0.75,
+          pr: 0.5,
+        }}
+      >
+        <IconButton
+          size="small"
+          aria-label="Drag to reorder stop"
+          sx={{ cursor: "grab", touchAction: "none" }}
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <DragIndicatorIcon fontSize="small" />
+        </IconButton>
+        <Avatar
+          sx={{
+            width: 28,
+            height: 28,
+            fontSize: 13,
+            bgcolor: "primary.main",
+          }}
+        >
+          {stopNumber}
+        </Avatar>
+        <ListItemText
+          primary={
+            <Typography noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+              {title}
+            </Typography>
+          }
+          sx={{ minWidth: 0, flex: 1 }}
+        />
+        <IconButton
+          size="small"
+          aria-label="Remove stop"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+        >
+          <DeleteOutlinedIcon fontSize="small" />
+        </IconButton>
+      </ListItemButton>
+    </Box>
+  );
 }
 
 function SortableStepRow({
@@ -405,28 +505,35 @@ export default function Sidebar({
   chains,
   steps,
   treasures,
+  trails,
+  trailStops,
   selectedRegionId,
   selectedChainId,
   selectedStepId,
   selectedTreasureId,
+  selectedTrailId,
   onZoomStepSpotlight,
   onHoverChange,
   onBack,
   onSelectCountry,
   onSelectRegion,
   onSelectChain,
+  onSelectTrail,
   onSelectStep,
   onSelectTreasure,
   onReorderSteps,
   onStepsOrderDraftChange,
   onCreateRegion,
   onCreateChain,
+  onCreateTrail,
   onSetRegionReadyToPublish,
   onSetChainReadyToPublish,
+  onSetTrailReadyToPublish,
   onSetStepReadyToPublish,
   onCreateStep,
   onZoomToRegion,
   onZoomToChain,
+  onZoomToTrail,
   newChainDraft,
   onNewChainDraftChange,
   onStartNewChainPlacement,
@@ -442,16 +549,23 @@ export default function Sidebar({
   onRemoveChainImage,
   onSetRegionImage,
   onRemoveRegionImage,
+  onSetTrailImage,
+  onRemoveTrailImage,
   getImageUrl,
   fullWidth = false,
   canCreateRegions = true,
   canDeleteChains = false,
   onDeleteChain,
+  onDeleteTrail,
   onRenameRegion,
   onRenameChain,
+  onRenameTrail,
   onSetChainOptional,
   onSetChainIsEatery,
-  onUpdateChainTrailMetadata,
+  onUpdateTrailMetadata,
+  onAddTrailStop,
+  onRemoveTrailStop,
+  onReorderTrailStops,
 }: Props) {
   const selectedCountry = getCountryById(selectedCountryId);
   const selectedRegion = selectedRegionId
@@ -462,8 +576,13 @@ export default function Sidebar({
     ? chains.find((c) => c.id === selectedChainId) || null
     : null;
 
+  const selectedTrail = selectedTrailId
+    ? trails.find((t) => t.id === selectedTrailId) || null
+    : null;
+
   const headerLabel =
     selectedChain?.title ||
+    selectedTrail?.title ||
     selectedRegion?.name ||
     selectedCountry?.name ||
     "Countries";
@@ -473,6 +592,28 @@ export default function Sidebar({
   const regionChains = selectedRegionId
     ? chains.filter((c) => c.region_id === selectedRegionId)
     : [];
+
+  const regionTrails = selectedRegionId
+    ? trails.filter((t) => t.region_id === selectedRegionId)
+    : [];
+
+  const sortedTrailStops = useMemo(() => {
+    if (!selectedTrailId) return [];
+    return trailStops
+      .filter((s) => s.trail_id === selectedTrailId)
+      .slice()
+      .sort((a, b) => a.order_index - b.order_index);
+  }, [trailStops, selectedTrailId]);
+
+  const chainIdsOnAnyTrail = useMemo(
+    () => new Set(trailStops.map((s) => s.chain_id)),
+    [trailStops],
+  );
+
+  const availableLocationsForTrail = useMemo(() => {
+    if (!selectedRegionId) return [];
+    return regionChains.filter((c) => !chainIdsOnAnyTrail.has(c.id));
+  }, [regionChains, chainIdsOnAnyTrail, selectedRegionId]);
 
   const sortedSteps = useMemo(
     () => steps.slice().sort((a, b) => a.order_index - b.order_index),
@@ -491,9 +632,11 @@ export default function Sidebar({
 
   const [draftOrderedStepIds, setDraftOrderedStepIds] = useState<string[]>([]);
   const [isDirty, setIsDirty] = useState(false);
+  const [draftOrderedStopIds, setDraftOrderedStopIds] = useState<string[]>([]);
 
   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
   const [deleteChainDialogOpen, setDeleteChainDialogOpen] = useState(false);
+  const [deleteTrailDialogOpen, setDeleteTrailDialogOpen] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [flagBusy, setFlagBusy] = useState(false);
@@ -503,6 +646,9 @@ export default function Sidebar({
   const chainLat = newChainDraft.lat;
   const chainLng = newChainDraft.lng;
   const [createLocationMode, setCreateLocationMode] = useState(false);
+  const [createTrailMode, setCreateTrailMode] = useState(false);
+  const [newTrailTitle, setNewTrailTitle] = useState("");
+  const [addStopChainId, setAddStopChainId] = useState("");
 
   const treasureLat = newTreasureDraft.lat;
   const treasureLng = newTreasureDraft.lng;
@@ -512,6 +658,9 @@ export default function Sidebar({
   const [expandedChainSection, setExpandedChainSection] = useState<
     ChainSidebarSection | false
   >("steps");
+  const [expandedTrailSection, setExpandedTrailSection] = useState<
+    TrailSidebarSection | false
+  >("stops");
 
   useEffect(() => {
     if (!selectedChainId) return;
@@ -519,6 +668,20 @@ export default function Sidebar({
       setExpandedChainSection("steps");
     });
   }, [selectedChainId]);
+
+  useEffect(() => {
+    if (!selectedTrailId) return;
+    queueMicrotask(() => {
+      setExpandedTrailSection("stops");
+      setAddStopChainId("");
+    });
+  }, [selectedTrailId]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setDraftOrderedStopIds(sortedTrailStops.map((s) => s.id));
+    });
+  }, [sortedTrailStops]);
 
   useEffect(() => {
     if (!selectedChainId) return;
@@ -742,7 +905,8 @@ export default function Sidebar({
   };
 
   const openRenameDialog = () => {
-    const current = selectedChain?.title ?? selectedRegion?.name ?? "";
+    const current =
+      selectedChain?.title ?? selectedTrail?.title ?? selectedRegion?.name ?? "";
     setRenameValue(current);
     setCreateError(null);
     setRenameDialogOpen(true);
@@ -758,10 +922,76 @@ export default function Sidebar({
     try {
       if (selectedChainId) {
         await onRenameChain(selectedChainId, renameValue);
+      } else if (selectedTrailId) {
+        await onRenameTrail(selectedTrailId, renameValue);
       } else if (selectedRegionId) {
         await onRenameRegion(selectedRegionId, renameValue);
       }
       setRenameDialogOpen(false);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const submitTrail = async () => {
+    if (!selectedRegionId) return;
+    const title = newTrailTitle.trim();
+    if (!title) {
+      setCreateError("Title is required.");
+      return;
+    }
+    setCreateError(null);
+    setCreateBusy(true);
+    try {
+      await onCreateTrail({ title, regionId: selectedRegionId });
+      setNewTrailTitle("");
+      setCreateTrailMode(false);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const confirmDeleteTrail = async () => {
+    if (!selectedTrailId) return;
+    setCreateError(null);
+    setCreateBusy(true);
+    try {
+      await onDeleteTrail(selectedTrailId);
+      setDeleteTrailDialogOpen(false);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const onTrailStopDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = draftOrderedStopIds.indexOf(String(active.id));
+    const newIndex = draftOrderedStopIds.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(draftOrderedStopIds, oldIndex, newIndex);
+    setDraftOrderedStopIds(next);
+    try {
+      await onReorderTrailStops(next);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+      setDraftOrderedStopIds(sortedTrailStops.map((s) => s.id));
+    }
+  };
+
+  const addSelectedStop = async () => {
+    if (!selectedTrailId || !addStopChainId) return;
+    setCreateError(null);
+    setCreateBusy(true);
+    try {
+      await onAddTrailStop({ trailId: selectedTrailId, chainId: addStopChainId });
+      setAddStopChainId("");
     } catch (e) {
       setCreateError(formatSupabaseError(e));
     } finally {
@@ -792,35 +1022,6 @@ export default function Sidebar({
       setFlagBusy(false);
     }
   };
-
-  const treasureBlock = selectedRegionId && !selectedChainId ? (
-    <Box sx={{ px: 1, py: 0.5 }}>
-      <Typography variant="overline" sx={{ color: "text.secondary" }}>
-        Treasures
-      </Typography>
-      <List dense>
-        {treasures.map((t) => (
-          <ListItemButton
-            key={t.id}
-            selected={selectedTreasureId === t.id}
-            onClick={() => onSelectTreasure(t.id)}
-            onMouseEnter={() => onHoverChange({ kind: "treasure", id: t.id })}
-            onMouseLeave={() => onHoverChange(null)}
-          >
-            <ListItemText
-              primary={t.status}
-              secondary={`${Number(t.latitude).toFixed(4)}, ${Number(t.longitude).toFixed(4)}`}
-            />
-          </ListItemButton>
-        ))}
-      </List>
-      {treasures.length === 0 && (
-        <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
-          No treasures in this region.
-        </Typography>
-      )}
-    </Box>
-  ) : null;
 
   const CreateOnMapForm = (input: {
     heading: string;
@@ -936,7 +1137,7 @@ export default function Sidebar({
             {headerLabel}
           </Typography>
         </Box>
-        {selectedRegionId && !selectedChainId ? (
+        {selectedRegionId && !selectedChainId && !selectedTrailId ? (
           <Box sx={{ mt: 1 }}>
             <Button size="small" variant="outlined" onClick={openRenameDialog}>
               Rename
@@ -1041,7 +1242,7 @@ export default function Sidebar({
         </>
       )}
 
-      {selectedRegionId && !selectedChainId && (
+      {selectedRegionId && !selectedChainId && !selectedTrailId && (
         <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <Box sx={{ p: 1, overflowY: "auto", overflowX: "hidden", flex: 1 }}>
             {createTreasureMode ? (
@@ -1147,12 +1348,54 @@ export default function Sidebar({
                   !Number.isFinite(Number(chainLat.trim())) ||
                   !Number.isFinite(Number(chainLng.trim())),
               })
+            ) : createTrailMode ? (
+              <Box sx={{ px: 1 }}>
+                <Typography variant="overline" sx={{ color: "text.secondary" }}>
+                  Create trail
+                </Typography>
+                <TextField
+                  label="Title"
+                  value={newTrailTitle}
+                  onChange={(e) => setNewTrailTitle(e.target.value)}
+                  fullWidth
+                  autoFocus
+                  size="small"
+                  sx={{ mt: 1 }}
+                />
+                <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    disabled={createBusy}
+                    onClick={() => {
+                      setCreateError(null);
+                      setNewTrailTitle("");
+                      setCreateTrailMode(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    disabled={createBusy || !newTrailTitle.trim()}
+                    onClick={() => void submitTrail()}
+                  >
+                    Create
+                  </Button>
+                </Box>
+                {createError && (
+                  <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                    {createError}
+                  </Typography>
+                )}
+              </Box>
             ) : (
               <>
                 {selectedRegion && !selectedRegion.ready_to_publish ? (
                   <Alert severity="info" sx={{ mx: 1, mb: 1 }}>
-                    This region is not published. Locations inside it are hidden
-                    from players until the region is marked live.
+                    This region is not published. Trails and locations inside it are
+                    hidden from players until the region is marked live.
                   </Alert>
                 ) : null}
                 {selectedRegion ? (
@@ -1181,6 +1424,7 @@ export default function Sidebar({
                     />
                   </Box>
                 ) : null}
+
                 <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
                   Locations
                 </Typography>
@@ -1206,6 +1450,9 @@ export default function Sidebar({
                             {c.title}
                           </Typography>
                         }
+                        secondary={
+                          chainIdsOnAnyTrail.has(c.id) ? "On a trail" : "Unassigned"
+                        }
                         sx={{ minWidth: 0, mr: 1 }}
                       />
                       <ReadyToPublishControl
@@ -1216,44 +1463,315 @@ export default function Sidebar({
                     </ListItemButton>
                   ))}
                 </List>
+                {regionChains.length === 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
+                    No locations in this region.
+                  </Typography>
+                )}
+                <Box sx={{ px: 1, mt: 0.5, mb: 1 }}>
+                  <Button
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    disabled={createLocationMode || createTreasureMode || createTrailMode}
+                    onClick={() => {
+                      setCreateError(null);
+                      onNewChainDraftChange({ title: "", lat: "", lng: "" });
+                      setCreateLocationMode(true);
+                    }}
+                  >
+                    Add location
+                  </Button>
+                </Box>
+
                 <Divider sx={{ my: 1 }} />
-                {treasureBlock}
+
+                <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
+                  Treasures
+                </Typography>
+                <List dense>
+                  {treasures.map((t) => (
+                    <ListItemButton
+                      key={t.id}
+                      selected={selectedTreasureId === t.id}
+                      onClick={() => onSelectTreasure(t.id)}
+                      onMouseEnter={() => onHoverChange({ kind: "treasure", id: t.id })}
+                      onMouseLeave={() => onHoverChange(null)}
+                    >
+                      <ListItemText
+                        primary={t.status}
+                        secondary={`${Number(t.latitude).toFixed(4)}, ${Number(t.longitude).toFixed(4)}`}
+                      />
+                    </ListItemButton>
+                  ))}
+                </List>
+                {treasures.length === 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
+                    No treasures in this region.
+                  </Typography>
+                )}
+                <Box sx={{ px: 1, mt: 0.5, mb: 1 }}>
+                  <Button
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    disabled={createLocationMode || createTreasureMode || createTrailMode}
+                    onClick={() => {
+                      setCreateError(null);
+                      onNewTreasureDraftChange({ lat: "", lng: "" });
+                      setCreateTreasureMode(true);
+                    }}
+                  >
+                    Add treasure
+                  </Button>
+                </Box>
+
+                <Divider sx={{ my: 1 }} />
+
+                <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
+                  Trails
+                </Typography>
+                <List dense>
+                  {regionTrails.map((t) => (
+                    <ListItemButton
+                      key={t.id}
+                      selected={selectedTrailId === t.id}
+                      onClick={() => onSelectTrail(t.id)}
+                      onMouseEnter={() => onHoverChange({ kind: "trail", id: t.id })}
+                      onMouseLeave={() => onHoverChange(null)}
+                      sx={{
+                        minWidth: 0,
+                        opacity:
+                          t.ready_to_publish && selectedRegion?.ready_to_publish
+                            ? 1
+                            : 0.72,
+                      }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Typography noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {t.title}
+                          </Typography>
+                        }
+                        sx={{ minWidth: 0, mr: 1 }}
+                      />
+                      <ReadyToPublishControl
+                        ready={t.ready_to_publish}
+                        entityLabel="trail"
+                        onChange={(ready) => onSetTrailReadyToPublish(t.id, ready)}
+                      />
+                    </ListItemButton>
+                  ))}
+                </List>
+                {regionTrails.length === 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
+                    No trails yet. Players will see an empty list until you add one.
+                  </Typography>
+                )}
+                <Box sx={{ px: 1, mt: 0.5, mb: 1 }}>
+                  <Button
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    disabled={createLocationMode || createTreasureMode || createTrailMode}
+                    onClick={() => {
+                      setCreateError(null);
+                      setNewTrailTitle("");
+                      setCreateTrailMode(true);
+                    }}
+                  >
+                    Add trail
+                  </Button>
+                </Box>
               </>
             )}
           </Box>
           <Box sx={{ p: 1, borderTop: 1, borderColor: "divider" }}>
-            <Button
-              fullWidth
-              variant="text"
-              sx={{ mb: 1 }}
-              onClick={onZoomToRegion}
-            >
+            <Button fullWidth variant="text" onClick={onZoomToRegion}>
               Zoom to region
             </Button>
+          </Box>
+        </Box>
+      )}
+
+      {selectedRegionId && selectedTrailId && !selectedChainId && (
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          <Box sx={{ p: 1, overflowY: "auto", overflowX: "hidden", flex: 1 }}>
+            <EditorAccordion
+              section="details"
+              expandedSection={expandedTrailSection}
+              onExpand={setExpandedTrailSection}
+              title="Trail details"
+              subtitle={selectedTrail?.title ?? ""}
+            >
+              <Stack spacing={2}>
+                {selectedRegion && !selectedRegion.ready_to_publish ? (
+                  <Alert severity="info">
+                    This region is not published. This trail is hidden from players
+                    until the region is marked live.
+                  </Alert>
+                ) : selectedTrail && !selectedTrail.ready_to_publish ? (
+                  <Alert severity="info">
+                    This trail is a draft and is hidden from players until marked live.
+                  </Alert>
+                ) : null}
+
+                {selectedTrail ? (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                    <Button size="small" variant="outlined" onClick={openRenameDialog}>
+                      Rename
+                    </Button>
+                    <ReadyToPublishControl
+                      ready={selectedTrail.ready_to_publish}
+                      entityLabel="trail"
+                      onChange={(ready) =>
+                        onSetTrailReadyToPublish(selectedTrail.id, ready)
+                      }
+                    />
+                  </Box>
+                ) : null}
+
+                {selectedTrail ? (
+                  <ImageUploadBlock
+                    label="Trail cover image"
+                    imagePath={selectedTrail.image_path}
+                    imageCacheKey={
+                      selectedTrail.image_path
+                        ? `trail-image:${selectedTrail.id}`
+                        : undefined
+                    }
+                    getImageUrl={getImageUrl}
+                    emptyLabel="No trail image yet."
+                    uploadLabel="Upload trail image"
+                    replaceLabel="Replace trail image"
+                    removeLabel="Remove image"
+                    fullWidth
+                    maxHeight={140}
+                    onPickFile={async (file) => {
+                      await onSetTrailImage({ trailId: selectedTrail.id, file });
+                    }}
+                    onRemove={async () => {
+                      await onRemoveTrailImage({ trailId: selectedTrail.id });
+                    }}
+                  />
+                ) : null}
+
+                {selectedTrail ? (
+                  <TrailMetadataEditor
+                    trail={selectedTrail}
+                    onSave={async (metadata) => {
+                      await onUpdateTrailMetadata(selectedTrail.id, metadata);
+                    }}
+                  />
+                ) : null}
+
+                <Button fullWidth variant="text" onClick={onZoomToTrail}>
+                  Zoom to trail
+                </Button>
+              </Stack>
+            </EditorAccordion>
+
+            <EditorAccordion
+              section="stops"
+              expandedSection={expandedTrailSection}
+              onExpand={setExpandedTrailSection}
+              title="Stops"
+              subtitle={`${sortedTrailStops.length} location${sortedTrailStops.length === 1 ? "" : "s"}`}
+            >
+              <Stack spacing={1}>
+                <Typography variant="caption" color="text.secondary">
+                  Drag to reorder. Each location can only be on one trail.
+                </Typography>
+
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(e) => void onTrailStopDragEnd(e)}
+                >
+                  <SortableContext
+                    items={draftOrderedStopIds}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <List dense sx={{ pb: 0 }}>
+                      {draftOrderedStopIds.map((stopId, idx) => {
+                        const stop = sortedTrailStops.find((s) => s.id === stopId);
+                        if (!stop) return null;
+                        const chain = chains.find((c) => c.id === stop.chain_id);
+                        return (
+                          <SortableTrailStopRow
+                            key={stop.id}
+                            id={stop.id}
+                            stopNumber={idx + 1}
+                            title={chain?.title ?? "Unknown location"}
+                            onRemove={() => void onRemoveTrailStop(stop.id)}
+                            onSelectLocation={() => onSelectChain(stop.chain_id)}
+                          />
+                        );
+                      })}
+                    </List>
+                  </SortableContext>
+                </DndContext>
+
+                {sortedTrailStops.length === 0 && (
+                  <Typography variant="caption" color="text.secondary">
+                    No stops yet. Add a location from this region.
+                  </Typography>
+                )}
+
+                <TextField
+                  select
+                  size="small"
+                  label="Add location"
+                  value={addStopChainId}
+                  onChange={(e) => setAddStopChainId(e.target.value)}
+                  fullWidth
+                  disabled={availableLocationsForTrail.length === 0}
+                >
+                  {availableLocationsForTrail.map((c) => (
+                    <MenuItem key={c.id} value={c.id}>
+                      {c.title}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  disabled={!addStopChainId || createBusy}
+                  onClick={() => void addSelectedStop()}
+                >
+                  Add stop
+                </Button>
+                {availableLocationsForTrail.length === 0 && (
+                  <Typography variant="caption" color="text.secondary">
+                    All locations in this region are already on a trail (or none exist).
+                  </Typography>
+                )}
+                {createError && (
+                  <Typography variant="body2" color="error">
+                    {createError}
+                  </Typography>
+                )}
+              </Stack>
+            </EditorAccordion>
+          </Box>
+          <Box sx={{ p: 1, borderTop: 1, borderColor: "divider" }}>
             <Button
               fullWidth
+              color="error"
               variant="outlined"
-              disabled={createLocationMode || createTreasureMode}
-              sx={{ mb: 1 }}
               onClick={() => {
                 setCreateError(null);
-                onNewTreasureDraftChange({ lat: "", lng: "" });
-                setCreateTreasureMode(true);
+                setDeleteTrailDialogOpen(true);
               }}
             >
-              Add treasure
-            </Button>
-            <Button
-              fullWidth
-              variant="outlined"
-              disabled={createLocationMode || createTreasureMode}
-              onClick={() => {
-                setCreateError(null);
-                onNewChainDraftChange({ title: "", lat: "", lng: "" });
-                setCreateLocationMode(true);
-              }}
-            >
-              Add location
+              Delete trail
             </Button>
           </Box>
         </Box>
@@ -1341,15 +1859,6 @@ export default function Sidebar({
                     }}
                     onRemove={async () => {
                       await onRemoveChainImage({ chainId: selectedChain.id });
-                    }}
-                  />
-                ) : null}
-
-                {selectedChain ? (
-                  <ChainTrailMetadataEditor
-                    chain={selectedChain}
-                    onSave={async (metadata) => {
-                      await onUpdateChainTrailMetadata(selectedChain.id, metadata);
                     }}
                   />
                 ) : null}
@@ -1493,7 +2002,11 @@ export default function Sidebar({
         onClose={() => !createBusy && setRenameDialogOpen(false)}
       >
         <DialogTitle>
-          {selectedChainId ? "Rename location" : "Rename region"}
+          {selectedChainId
+            ? "Rename location"
+            : selectedTrailId
+              ? "Rename trail"
+              : "Rename region"}
         </DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
           <TextField
@@ -1556,6 +2069,41 @@ export default function Sidebar({
             color="error"
             onClick={confirmDeleteChain}
             disabled={createBusy || !selectedChainId}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={deleteTrailDialogOpen}
+        onClose={() => !createBusy && setDeleteTrailDialogOpen(false)}
+      >
+        <DialogTitle>Delete trail</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {selectedTrail
+              ? `Delete trail “${selectedTrail.title}”? Locations on it are not deleted.`
+              : "Delete this trail?"}
+          </Typography>
+          {createError && deleteTrailDialogOpen ? (
+            <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+              {createError}
+            </Typography>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setDeleteTrailDialogOpen(false)}
+            disabled={createBusy}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => void confirmDeleteTrail()}
+            disabled={createBusy || !selectedTrailId}
           >
             Delete
           </Button>
