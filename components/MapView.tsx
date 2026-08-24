@@ -99,7 +99,8 @@ type Props = {
     | { kind: "step"; stepId: string }
     | { kind: "newChain"; regionId: string }
     | { kind: "newTreasure"; regionId: string }
-    | { kind: "treasure"; treasureId: string };
+    | { kind: "treasure"; treasureId: string }
+    | { kind: "region"; regionId: string };
   onPlacementMapClick: (lat: number, lng: number) => void;
   onCancelPlacement: () => void;
   onSelectCountry: (id: string) => void;
@@ -110,6 +111,7 @@ type Props = {
   onSelectTreasure: (id: string) => void;
   onMoveStep: (id: string, lat: number, lng: number) => void;
   onMoveTreasure: (id: string, lat: number, lng: number) => void;
+  onMoveRegion: (id: string, lat: number, lng: number) => void;
 
   newChainDraftLatLng: [number, number] | null;
   newTreasureDraftLatLng: [number, number] | null;
@@ -272,6 +274,8 @@ function placementHint(placement: Props["placement"]): string {
     return "Tap the map to place the new treasure. Press Esc to cancel.";
   if (placement.kind === "treasure")
     return "Tap the map to set the treasure location. Press Esc to cancel.";
+  if (placement.kind === "region")
+    return "Tap the map to set the region location. Press Esc to cancel.";
   return "Tap the map to place the step. Press Esc to cancel.";
 }
 
@@ -303,6 +307,7 @@ export default function MapView(props: Props) {
     onSelectTreasure,
     onMoveStep,
     onMoveTreasure,
+    onMoveRegion,
     newChainDraftLatLng,
     newTreasureDraftLatLng,
     onSetNewChainDraftLatLng,
@@ -647,17 +652,23 @@ export default function MapView(props: Props) {
           {showRegionMarkers &&
             regionMarkers.map(({ region, position }) => {
               const hovered = hoverMatch(mapHover, "region", region.id);
-              const icon = pickStandardIcon(false, hovered);
+              const selected = selectedRegionId === region.id;
+              const icon = pickStandardIcon(selected, hovered);
               return (
                 <Marker
                   key={region.id}
                   position={position}
                   icon={icon}
+                  draggable={!placementActive}
                   eventHandlers={{
                     click: () => onSelectRegion(region.id),
                     mouseover: () =>
                       onHoverChange({ kind: "region", id: region.id }),
                     mouseout: () => onHoverChange(null),
+                    dragend: (e) => {
+                      const pos = e.target.getLatLng();
+                      onMoveRegion(region.id, pos.lat, pos.lng);
+                    },
                   }}
                 />
               );

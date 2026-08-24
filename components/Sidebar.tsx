@@ -61,6 +61,7 @@ import EditorAccordion from "@/components/EditorAccordion";
 
 type ChainSidebarSection = "details" | "steps";
 type TrailSidebarSection = "details" | "stops";
+type RegionSidebarSection = "details" | "locations" | "treasures" | "trails";
 
 type Props = {
   countries: Country[];
@@ -124,6 +125,15 @@ type Props = {
     latitude: number;
     longitude: number;
   }) => Promise<void>;
+
+  regionPlacementActive: boolean;
+  onStartRegionPlacement: () => void;
+  onCancelRegionPlacement: () => void;
+  onUpdateRegionLocation: (
+    regionId: string,
+    lat: number,
+    lng: number,
+  ) => Promise<void>;
 
   onSetChainImage: (input: { chainId: string; file: File }) => Promise<void> | void;
   onRemoveChainImage: (input: { chainId: string }) => Promise<void> | void;
@@ -545,6 +555,10 @@ export default function Sidebar({
   onCancelNewTreasurePlacement,
   newTreasurePlacementActive,
   onCreateTreasure,
+  regionPlacementActive,
+  onStartRegionPlacement,
+  onCancelRegionPlacement,
+  onUpdateRegionLocation,
   onSetChainImage,
   onRemoveChainImage,
   onSetRegionImage,
@@ -661,6 +675,12 @@ export default function Sidebar({
   const [expandedTrailSection, setExpandedTrailSection] = useState<
     TrailSidebarSection | false
   >("stops");
+  const [expandedRegionSection, setExpandedRegionSection] = useState<
+    RegionSidebarSection | false
+  >("locations");
+  const [regionLatText, setRegionLatText] = useState("");
+  const [regionLngText, setRegionLngText] = useState("");
+  const [regionMapError, setRegionMapError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedChainId) return;
@@ -676,6 +696,28 @@ export default function Sidebar({
       setAddStopChainId("");
     });
   }, [selectedTrailId]);
+
+  useEffect(() => {
+    if (!selectedRegionId || selectedChainId || selectedTrailId) return;
+    queueMicrotask(() => {
+      setExpandedRegionSection("locations");
+      setRegionMapError(null);
+    });
+  }, [selectedRegionId, selectedChainId, selectedTrailId]);
+
+  useEffect(() => {
+    if (!selectedRegion) return;
+    setRegionLatText(
+      selectedRegion.latitude == null ? "" : String(selectedRegion.latitude),
+    );
+    setRegionLngText(
+      selectedRegion.longitude == null ? "" : String(selectedRegion.longitude),
+    );
+  }, [
+    selectedRegion?.id,
+    selectedRegion?.latitude,
+    selectedRegion?.longitude,
+  ]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -1137,13 +1179,6 @@ export default function Sidebar({
             {headerLabel}
           </Typography>
         </Box>
-        {selectedRegionId && !selectedChainId && !selectedTrailId ? (
-          <Box sx={{ mt: 1 }}>
-            <Button size="small" variant="outlined" onClick={openRenameDialog}>
-              Rename
-            </Button>
-          </Box>
-        ) : null}
       </Box>
       <Divider />
 
@@ -1392,204 +1427,313 @@ export default function Sidebar({
               </Box>
             ) : (
               <>
-                {selectedRegion && !selectedRegion.ready_to_publish ? (
-                  <Alert severity="info" sx={{ mx: 1, mb: 1 }}>
-                    This region is not published. Trails and locations inside it are
-                    hidden from players until the region is marked live.
-                  </Alert>
-                ) : null}
-                {selectedRegion ? (
-                  <Box sx={{ px: 1, mb: 1 }}>
-                    <ImageUploadBlock
-                      label="Region card image"
-                      imagePath={selectedRegion.image_path}
-                      imageCacheKey={
-                        selectedRegion.image_path
-                          ? `region-image:${selectedRegion.id}`
-                          : undefined
-                      }
-                      getImageUrl={getImageUrl}
-                      emptyLabel="No region card image yet."
-                      uploadLabel="Upload region card"
-                      replaceLabel="Replace region card"
-                      removeLabel="Remove image"
+                <EditorAccordion
+                  section="details"
+                  expandedSection={expandedRegionSection}
+                  onExpand={setExpandedRegionSection}
+                  title="Region details"
+                  subtitle={selectedRegion?.name ?? ""}
+                >
+                  <Stack spacing={2}>
+                    {selectedRegion && !selectedRegion.ready_to_publish ? (
+                      <Alert severity="info">
+                        This region is not published. Trails and locations inside it
+                        are hidden from players until the region is marked live.
+                      </Alert>
+                    ) : null}
+
+                    <Button size="small" variant="outlined" onClick={openRenameDialog}>
+                      Rename
+                    </Button>
+
+                    {selectedRegion ? (
+                      <ImageUploadBlock
+                        label="Region card image"
+                        imagePath={selectedRegion.image_path}
+                        imageCacheKey={
+                          selectedRegion.image_path
+                            ? `region-image:${selectedRegion.id}`
+                            : undefined
+                        }
+                        getImageUrl={getImageUrl}
+                        emptyLabel="No region card image yet."
+                        uploadLabel="Upload region card"
+                        replaceLabel="Replace region card"
+                        removeLabel="Remove image"
+                        fullWidth
+                        maxHeight={140}
+                        onPickFile={async (file) => {
+                          await onSetRegionImage({ regionId: selectedRegion.id, file });
+                        }}
+                        onRemove={async () => {
+                          await onRemoveRegionImage({ regionId: selectedRegion.id });
+                        }}
+                      />
+                    ) : null}
+
+                    <Stack spacing={1}>
+                      <Typography variant="caption" color="text.secondary">
+                        Map position (browse hub pin)
+                      </Typography>
+                      <Box sx={{ display: "flex", gap: 1 }}>
+                        <TextField
+                          label="Latitude"
+                          value={regionLatText}
+                          onChange={(e) => setRegionLatText(e.target.value)}
+                          size="small"
+                          fullWidth
+                          inputMode="decimal"
+                        />
+                        <TextField
+                          label="Longitude"
+                          value={regionLngText}
+                          onChange={(e) => setRegionLngText(e.target.value)}
+                          size="small"
+                          fullWidth
+                          inputMode="decimal"
+                        />
+                      </Box>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        disabled={createBusy || !selectedRegion}
+                        onClick={async () => {
+                          if (!selectedRegion) return;
+                          const lat = Number(regionLatText.trim());
+                          const lng = Number(regionLngText.trim());
+                          if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                            setRegionMapError("Provide both latitude and longitude.");
+                            return;
+                          }
+                          setRegionMapError(null);
+                          setCreateBusy(true);
+                          try {
+                            await onUpdateRegionLocation(selectedRegion.id, lat, lng);
+                            onCancelRegionPlacement();
+                          } catch (e) {
+                            setRegionMapError(formatSupabaseError(e));
+                          } finally {
+                            setCreateBusy(false);
+                          }
+                        }}
+                      >
+                        Apply lat/lon
+                      </Button>
+                      <Button
+                        fullWidth
+                        variant={regionPlacementActive ? "contained" : "outlined"}
+                        color={regionPlacementActive ? "warning" : "primary"}
+                        size="small"
+                        onClick={() => {
+                          setRegionMapError(null);
+                          if (regionPlacementActive) onCancelRegionPlacement();
+                          else onStartRegionPlacement();
+                        }}
+                      >
+                        {regionPlacementActive
+                          ? "Click the map to set coordinates…"
+                          : "Pick on map"}
+                      </Button>
+                      {regionMapError ? (
+                        <Typography variant="body2" color="error">
+                          {regionMapError}
+                        </Typography>
+                      ) : null}
+                    </Stack>
+
+                    <Button fullWidth variant="text" onClick={onZoomToRegion}>
+                      Zoom to region
+                    </Button>
+                  </Stack>
+                </EditorAccordion>
+
+                <EditorAccordion
+                  section="locations"
+                  expandedSection={expandedRegionSection}
+                  onExpand={setExpandedRegionSection}
+                  title="Locations"
+                  subtitle={`${regionChains.length}`}
+                >
+                  <Stack spacing={1}>
+                    <List dense sx={{ py: 0 }}>
+                      {regionChains.map((c) => (
+                        <ListItemButton
+                          key={c.id}
+                          selected={selectedChainId === c.id}
+                          onClick={() => onSelectChain(c.id)}
+                          onMouseEnter={() =>
+                            onHoverChange({ kind: "chain", id: c.id })
+                          }
+                          onMouseLeave={() => onHoverChange(null)}
+                          sx={{
+                            minWidth: 0,
+                            opacity:
+                              c.ready_to_publish && selectedRegion?.ready_to_publish
+                                ? 1
+                                : 0.72,
+                          }}
+                        >
+                          <ListItemText
+                            primary={
+                              <Typography
+                                noWrap
+                                sx={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                              >
+                                {c.title}
+                              </Typography>
+                            }
+                            secondary={
+                              chainIdsOnAnyTrail.has(c.id)
+                                ? "On a trail"
+                                : "Unassigned"
+                            }
+                            sx={{ minWidth: 0, mr: 1 }}
+                          />
+                          <ReadyToPublishControl
+                            ready={c.ready_to_publish}
+                            entityLabel="location"
+                            onChange={(ready) =>
+                              onSetChainReadyToPublish(c.id, ready)
+                            }
+                          />
+                        </ListItemButton>
+                      ))}
+                    </List>
+                    {regionChains.length === 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        No locations in this region.
+                      </Typography>
+                    )}
+                    <Button
                       fullWidth
-                      maxHeight={140}
-                      onPickFile={async (file) => {
-                        await onSetRegionImage({ regionId: selectedRegion.id, file });
-                      }}
-                      onRemove={async () => {
-                        await onRemoveRegionImage({ regionId: selectedRegion.id });
-                      }}
-                    />
-                  </Box>
-                ) : null}
-
-                <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
-                  Locations
-                </Typography>
-                <List dense>
-                  {regionChains.map((c) => (
-                    <ListItemButton
-                      key={c.id}
-                      selected={selectedChainId === c.id}
-                      onClick={() => onSelectChain(c.id)}
-                      onMouseEnter={() => onHoverChange({ kind: "chain", id: c.id })}
-                      onMouseLeave={() => onHoverChange(null)}
-                      sx={{
-                        minWidth: 0,
-                        opacity:
-                          c.ready_to_publish && selectedRegion?.ready_to_publish
-                            ? 1
-                            : 0.72,
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        setCreateError(null);
+                        onNewChainDraftChange({ title: "", lat: "", lng: "" });
+                        setCreateLocationMode(true);
                       }}
                     >
-                      <ListItemText
-                        primary={
-                          <Typography noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {c.title}
-                          </Typography>
-                        }
-                        secondary={
-                          chainIdsOnAnyTrail.has(c.id) ? "On a trail" : "Unassigned"
-                        }
-                        sx={{ minWidth: 0, mr: 1 }}
-                      />
-                      <ReadyToPublishControl
-                        ready={c.ready_to_publish}
-                        entityLabel="location"
-                        onChange={(ready) => onSetChainReadyToPublish(c.id, ready)}
-                      />
-                    </ListItemButton>
-                  ))}
-                </List>
-                {regionChains.length === 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
-                    No locations in this region.
-                  </Typography>
-                )}
-                <Box sx={{ px: 1, mt: 0.5, mb: 1 }}>
-                  <Button
-                    fullWidth
-                    size="small"
-                    variant="outlined"
-                    disabled={createLocationMode || createTreasureMode || createTrailMode}
-                    onClick={() => {
-                      setCreateError(null);
-                      onNewChainDraftChange({ title: "", lat: "", lng: "" });
-                      setCreateLocationMode(true);
-                    }}
-                  >
-                    Add location
-                  </Button>
-                </Box>
+                      Add location
+                    </Button>
+                  </Stack>
+                </EditorAccordion>
 
-                <Divider sx={{ my: 1 }} />
-
-                <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
-                  Treasures
-                </Typography>
-                <List dense>
-                  {treasures.map((t) => (
-                    <ListItemButton
-                      key={t.id}
-                      selected={selectedTreasureId === t.id}
-                      onClick={() => onSelectTreasure(t.id)}
-                      onMouseEnter={() => onHoverChange({ kind: "treasure", id: t.id })}
-                      onMouseLeave={() => onHoverChange(null)}
-                    >
-                      <ListItemText
-                        primary={t.status}
-                        secondary={`${Number(t.latitude).toFixed(4)}, ${Number(t.longitude).toFixed(4)}`}
-                      />
-                    </ListItemButton>
-                  ))}
-                </List>
-                {treasures.length === 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
-                    No treasures in this region.
-                  </Typography>
-                )}
-                <Box sx={{ px: 1, mt: 0.5, mb: 1 }}>
-                  <Button
-                    fullWidth
-                    size="small"
-                    variant="outlined"
-                    disabled={createLocationMode || createTreasureMode || createTrailMode}
-                    onClick={() => {
-                      setCreateError(null);
-                      onNewTreasureDraftChange({ lat: "", lng: "" });
-                      setCreateTreasureMode(true);
-                    }}
-                  >
-                    Add treasure
-                  </Button>
-                </Box>
-
-                <Divider sx={{ my: 1 }} />
-
-                <Typography variant="overline" sx={{ px: 1, color: "text.secondary" }}>
-                  Trails
-                </Typography>
-                <List dense>
-                  {regionTrails.map((t) => (
-                    <ListItemButton
-                      key={t.id}
-                      selected={selectedTrailId === t.id}
-                      onClick={() => onSelectTrail(t.id)}
-                      onMouseEnter={() => onHoverChange({ kind: "trail", id: t.id })}
-                      onMouseLeave={() => onHoverChange(null)}
-                      sx={{
-                        minWidth: 0,
-                        opacity:
-                          t.ready_to_publish && selectedRegion?.ready_to_publish
-                            ? 1
-                            : 0.72,
+                <EditorAccordion
+                  section="treasures"
+                  expandedSection={expandedRegionSection}
+                  onExpand={setExpandedRegionSection}
+                  title="Treasures"
+                  subtitle={`${treasures.length}`}
+                >
+                  <Stack spacing={1}>
+                    <List dense sx={{ py: 0 }}>
+                      {treasures.map((t) => (
+                        <ListItemButton
+                          key={t.id}
+                          selected={selectedTreasureId === t.id}
+                          onClick={() => onSelectTreasure(t.id)}
+                          onMouseEnter={() =>
+                            onHoverChange({ kind: "treasure", id: t.id })
+                          }
+                          onMouseLeave={() => onHoverChange(null)}
+                        >
+                          <ListItemText
+                            primary={t.status}
+                            secondary={`${Number(t.latitude).toFixed(4)}, ${Number(t.longitude).toFixed(4)}`}
+                          />
+                        </ListItemButton>
+                      ))}
+                    </List>
+                    {treasures.length === 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        No treasures in this region.
+                      </Typography>
+                    )}
+                    <Button
+                      fullWidth
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        setCreateError(null);
+                        onNewTreasureDraftChange({ lat: "", lng: "" });
+                        setCreateTreasureMode(true);
                       }}
                     >
-                      <ListItemText
-                        primary={
-                          <Typography noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {t.title}
-                          </Typography>
-                        }
-                        sx={{ minWidth: 0, mr: 1 }}
-                      />
-                      <ReadyToPublishControl
-                        ready={t.ready_to_publish}
-                        entityLabel="trail"
-                        onChange={(ready) => onSetTrailReadyToPublish(t.id, ready)}
-                      />
-                    </ListItemButton>
-                  ))}
-                </List>
-                {regionTrails.length === 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
-                    No trails yet. Players will see an empty list until you add one.
-                  </Typography>
-                )}
-                <Box sx={{ px: 1, mt: 0.5, mb: 1 }}>
-                  <Button
-                    fullWidth
-                    size="small"
-                    variant="outlined"
-                    disabled={createLocationMode || createTreasureMode || createTrailMode}
-                    onClick={() => {
-                      setCreateError(null);
-                      setNewTrailTitle("");
-                      setCreateTrailMode(true);
-                    }}
-                  >
-                    Add trail
-                  </Button>
-                </Box>
+                      Add treasure
+                    </Button>
+                  </Stack>
+                </EditorAccordion>
+
+                <EditorAccordion
+                  section="trails"
+                  expandedSection={expandedRegionSection}
+                  onExpand={setExpandedRegionSection}
+                  title="Trails"
+                  subtitle={`${regionTrails.length}`}
+                >
+                  <Stack spacing={1}>
+                    <List dense sx={{ py: 0 }}>
+                      {regionTrails.map((t) => (
+                        <ListItemButton
+                          key={t.id}
+                          selected={selectedTrailId === t.id}
+                          onClick={() => onSelectTrail(t.id)}
+                          onMouseEnter={() =>
+                            onHoverChange({ kind: "trail", id: t.id })
+                          }
+                          onMouseLeave={() => onHoverChange(null)}
+                          sx={{
+                            minWidth: 0,
+                            opacity:
+                              t.ready_to_publish && selectedRegion?.ready_to_publish
+                                ? 1
+                                : 0.72,
+                          }}
+                        >
+                          <ListItemText
+                            primary={
+                              <Typography
+                                noWrap
+                                sx={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                              >
+                                {t.title}
+                              </Typography>
+                            }
+                            sx={{ minWidth: 0, mr: 1 }}
+                          />
+                          <ReadyToPublishControl
+                            ready={t.ready_to_publish}
+                            entityLabel="trail"
+                            onChange={(ready) =>
+                              onSetTrailReadyToPublish(t.id, ready)
+                            }
+                          />
+                        </ListItemButton>
+                      ))}
+                    </List>
+                    {regionTrails.length === 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        No trails yet. Players will see an empty list until you add
+                        one.
+                      </Typography>
+                    )}
+                    <Button
+                      fullWidth
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        setCreateError(null);
+                        setNewTrailTitle("");
+                        setCreateTrailMode(true);
+                      }}
+                    >
+                      Add trail
+                    </Button>
+                  </Stack>
+                </EditorAccordion>
               </>
             )}
-          </Box>
-          <Box sx={{ p: 1, borderTop: 1, borderColor: "divider" }}>
-            <Button fullWidth variant="text" onClick={onZoomToRegion}>
-              Zoom to region
-            </Button>
           </Box>
         </Box>
       )}

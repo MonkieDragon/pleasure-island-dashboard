@@ -160,7 +160,8 @@ export default function Dashboard() {
     | { kind: "step"; stepId: string }
     | { kind: "newChain"; regionId: string }
     | { kind: "newTreasure"; regionId: string }
-    | { kind: "treasure"; treasureId: string };
+    | { kind: "treasure"; treasureId: string }
+    | { kind: "region"; regionId: string };
 
   const [regions, setRegions] = useState<Region[]>([]);
   const [chains, setChains] = useState<PuzzleChain[]>([]);
@@ -317,6 +318,7 @@ export default function Dashboard() {
     placement?.kind === "treasure" ? placement.treasureId : null;
   const newChainPlacementActive = placement?.kind === "newChain";
   const newTreasurePlacementActive = placement?.kind === "newTreasure";
+  const regionPlacementActive = placement?.kind === "region";
 
   const isStepOrderDirty = !!stepOrderDraft?.isDirty;
   const canSaveDraft = useMemo(() => {
@@ -1620,6 +1622,23 @@ export default function Dashboard() {
     );
   };
 
+  const updateRegionLocation = async (
+    regionId: string,
+    lat: number,
+    lng: number,
+  ) => {
+    const { error } = await supabase
+      .from("regions")
+      .update({ latitude: lat, longitude: lng })
+      .eq("id", regionId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setRegions((prev) =>
+      prev.map((r) =>
+        r.id === regionId ? { ...r, latitude: lat, longitude: lng } : r,
+      ),
+    );
+  };
+
   const renameChain = async (chainId: string, title: string) => {
     const trimmed = title.trim();
     if (!trimmed) throw new Error("Title is required.");
@@ -1808,6 +1827,11 @@ export default function Dashboard() {
     if (placement.kind === "treasure") {
       await moveTreasure(placement.treasureId, lat, lng);
       setPlacement(null);
+      return;
+    }
+    if (placement.kind === "region") {
+      await updateRegionLocation(placement.regionId, lat, lng);
+      setPlacement(null);
     }
   };
 
@@ -1947,6 +1971,15 @@ export default function Dashboard() {
       newTreasureDraft={newTreasureDraft}
       onNewTreasureDraftChange={setNewTreasureDraft}
       newTreasurePlacementActive={newTreasurePlacementActive}
+      regionPlacementActive={regionPlacementActive}
+      onStartRegionPlacement={() => {
+        if (!selectedRegionId) return;
+        setPlacement({ kind: "region", regionId: selectedRegionId });
+      }}
+      onCancelRegionPlacement={() => {
+        setPlacement((p) => (p?.kind === "region" ? null : p));
+      }}
+      onUpdateRegionLocation={updateRegionLocation}
       onStartNewTreasurePlacement={() => {
         if (!selectedRegionId) return;
         setPlacement({ kind: "newTreasure", regionId: selectedRegionId });
@@ -2012,6 +2045,7 @@ export default function Dashboard() {
       onSelectTreasure={onSelectTreasureFromUi}
       onMoveStep={moveStep}
       onMoveTreasure={moveTreasure}
+      onMoveRegion={updateRegionLocation}
       newChainDraftLatLng={newChainDraftLatLng}
       newTreasureDraftLatLng={newTreasureDraftLatLng}
       onSetNewChainDraftLatLng={(lat, lng) => {
