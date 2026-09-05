@@ -23,8 +23,8 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Leaflet DivIcon defaults add a white square — clear for SVG chain markers */
-.leaflet-div-icon.chain-map-icon {
+/* Leaflet DivIcon defaults add a white square — clear for map markers */
+.leaflet-div-icon.map-marker-icon {
   background: transparent;
   border: none;
 }

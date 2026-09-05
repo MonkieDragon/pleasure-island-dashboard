@@ -18,60 +18,7 @@ import L from "leaflet";
 import MyLocationIcon from "@mui/icons-material/MyLocation";
 import { Alert, Box, Fab, Snackbar, Typography } from "@mui/material";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { pickChainIcon } from "@/lib/chainMapIcons";
-
-const ICON_SIZE: [number, number] = [36, 36];
-const ICON_ANCHOR: [number, number] = [18, 36];
-
-const iconDefault = L.icon({
-  iconUrl: "/map-icons/map-icon.png",
-  iconSize: ICON_SIZE,
-  iconAnchor: ICON_ANCHOR,
-});
-
-const iconHover = L.icon({
-  iconUrl: "/map-icons/map-icon-hover.png",
-  iconSize: ICON_SIZE,
-  iconAnchor: ICON_ANCHOR,
-});
-
-const iconSelected = L.icon({
-  iconUrl: "/map-icons/map-icon-selected.png",
-  iconSize: ICON_SIZE,
-  iconAnchor: ICON_ANCHOR,
-});
-
-const iconTreasure = L.icon({
-  iconUrl: "/map-icons/map-icon-treasure.png",
-  iconSize: ICON_SIZE,
-  iconAnchor: ICON_ANCHOR,
-});
-
-const iconTreasureSelected = L.icon({
-  iconUrl: "/map-icons/map-icon-treasure-selected.png",
-  iconSize: ICON_SIZE,
-  iconAnchor: ICON_ANCHOR,
-});
-
-function hoverMatch(
-  h: MapHover | null,
-  kind: MapHover["kind"],
-  id: string,
-) {
-  return h?.kind === kind && h.id === id;
-}
-
-function pickStandardIcon(selected: boolean, hovered: boolean) {
-  if (hovered) return iconHover;
-  if (selected) return iconSelected;
-  return iconDefault;
-}
-
-function pickTreasureIcon(selected: boolean, hovered: boolean) {
-  if (hovered) return iconHover;
-  if (selected) return iconTreasureSelected;
-  return iconTreasure;
-}
+import { mapMarkerIcon } from "@/lib/mapMarkerIcon";
 
 type Props = {
   countries: Country[];
@@ -293,9 +240,6 @@ export default function MapView(props: Props) {
     selectedChainId,
     selectedTrailId,
     chainStepsReady,
-    selectedStepId,
-    selectedTreasureId,
-    mapHover,
     onHoverChange,
     placement,
     onPlacementMapClick,
@@ -605,7 +549,7 @@ export default function MapView(props: Props) {
           {newChainDraftLatLng && (
             <Marker
               position={newChainDraftLatLng}
-              icon={iconSelected}
+              icon={mapMarkerIcon}
               draggable
               eventHandlers={{
                 dragend: (e) => {
@@ -619,7 +563,7 @@ export default function MapView(props: Props) {
           {newTreasureDraftLatLng && (
             <Marker
               position={newTreasureDraftLatLng}
-              icon={iconTreasureSelected}
+              icon={mapMarkerIcon}
               draggable
               eventHandlers={{
                 dragend: (e) => {
@@ -632,13 +576,11 @@ export default function MapView(props: Props) {
 
           {showCountryMarkers &&
             countryMarkers.map(({ country, position }) => {
-              const hovered = hoverMatch(mapHover, "country", country.id);
-              const icon = pickStandardIcon(false, hovered);
               return (
                 <Marker
                   key={country.id}
                   position={position}
-                  icon={icon}
+                  icon={mapMarkerIcon}
                   eventHandlers={{
                     click: () => onSelectCountry(country.id),
                     mouseover: () =>
@@ -651,14 +593,11 @@ export default function MapView(props: Props) {
 
           {showRegionMarkers &&
             regionMarkers.map(({ region, position }) => {
-              const hovered = hoverMatch(mapHover, "region", region.id);
-              const selected = selectedRegionId === region.id;
-              const icon = pickStandardIcon(selected, hovered);
               return (
                 <Marker
                   key={region.id}
                   position={position}
-                  icon={icon}
+                  icon={mapMarkerIcon}
                   draggable={!placementActive}
                   eventHandlers={{
                     click: () => onSelectRegion(region.id),
@@ -677,20 +616,11 @@ export default function MapView(props: Props) {
           {!!selectedRegionId &&
             showChainMarkers &&
             regionChainsWithCoords.map((c) => {
-              const hovered = hoverMatch(mapHover, "chain", c.id);
-              const selected = selectedChainId === c.id;
-              const icon = pickChainIcon({
-                isEatery: !!c.is_eatery,
-                optional: c.optional !== false,
-                readyToPublish: !!c.ready_to_publish,
-                selected,
-                hovered,
-              });
               return (
                 <Marker
                   key={c.id}
                   position={[c.latitude, c.longitude]}
-                  icon={icon}
+                  icon={mapMarkerIcon}
                   eventHandlers={{
                     click: () => onSelectChain(c.id),
                     mouseover: () =>
@@ -703,19 +633,11 @@ export default function MapView(props: Props) {
 
           {!!selectedTrailId &&
             trailStopChains.map((c) => {
-              const hovered = hoverMatch(mapHover, "chain", c.id);
-              const icon = pickChainIcon({
-                isEatery: !!c.is_eatery,
-                optional: c.optional !== false,
-                readyToPublish: !!c.ready_to_publish,
-                selected: false,
-                hovered,
-              });
               return (
                 <Marker
                   key={`trail-stop-${c.id}`}
                   position={[c.latitude, c.longitude]}
-                  icon={icon}
+                  icon={mapMarkerIcon}
                   eventHandlers={{
                     click: () => onSelectChain(c.id),
                     mouseover: () =>
@@ -729,14 +651,11 @@ export default function MapView(props: Props) {
           {trailRoute.length > 1 && <Polyline positions={trailRoute} />}
 
           {visibleStepsWithCoords.map((s) => {
-            const hovered = hoverMatch(mapHover, "step", s.id);
-            const selected = selectedStepId === s.id;
-            const icon = pickStandardIcon(selected, hovered);
             return (
               <Marker
                 key={s.id}
                 position={[s.latitude, s.longitude]}
-                icon={icon}
+                icon={mapMarkerIcon}
                 draggable={!placementActive}
                 eventHandlers={{
                   click: () => {
@@ -767,14 +686,11 @@ export default function MapView(props: Props) {
           {viewLevel === "region" &&
             selectedRegionId &&
             treasuresWithCoords.map((t) => {
-              const hovered = hoverMatch(mapHover, "treasure", t.id);
-              const selected = selectedTreasureId === t.id;
-              const icon = pickTreasureIcon(selected, hovered);
               return (
                 <Marker
                   key={t.id}
                   position={[t.latitude, t.longitude]}
-                  icon={icon}
+                  icon={mapMarkerIcon}
                   draggable={!placementActive}
                   eventHandlers={{
                     click: () => onSelectTreasure(t.id),

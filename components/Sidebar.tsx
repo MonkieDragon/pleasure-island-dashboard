@@ -13,7 +13,7 @@ import {
 } from "@/types/database";
 import type { MapHover } from "@/types/mapUi";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
+import CloseIcon from "@mui/icons-material/Close";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import LockIcon from "@mui/icons-material/Lock";
 import ZoomInMapIcon from "@mui/icons-material/ZoomInMap";
@@ -362,7 +362,7 @@ function SortableTrailStopRow({
             onRemove();
           }}
         >
-          <DeleteOutlinedIcon fontSize="small" />
+          <CloseIcon fontSize="small" />
         </IconButton>
       </ListItemButton>
     </Box>
@@ -1541,7 +1541,12 @@ export default function Sidebar({
                       ) : null}
                     </Stack>
 
-                    <Button fullWidth variant="text" onClick={onZoomToRegion}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      size="small"
+                      onClick={onZoomToRegion}
+                    >
                       Zoom to region
                     </Button>
                   </Stack>
@@ -1816,7 +1821,12 @@ export default function Sidebar({
                   />
                 ) : null}
 
-                <Button fullWidth variant="text" onClick={onZoomToTrail}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  onClick={onZoomToTrail}
+                >
                   Zoom to trail
                 </Button>
               </Stack>
@@ -2007,7 +2017,12 @@ export default function Sidebar({
                   />
                 ) : null}
 
-                <Button fullWidth variant="text" onClick={onZoomToChain}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  onClick={onZoomToChain}
+                >
                   Zoom to location
                 </Button>
               </Stack>

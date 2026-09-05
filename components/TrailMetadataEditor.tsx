@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Trail } from "@/types/database";
 import {
   Box,
+  Button,
   FormControl,
   FormControlLabel,
   InputLabel,
@@ -113,14 +114,14 @@ export default function TrailMetadataEditor({ trail, onSave }: Props) {
           }
           label="Free trail"
         />
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ cursor: "pointer", textDecoration: "underline" }}
+        <Button
+          variant="contained"
+          size="small"
+          fullWidth
           onClick={() => void onSave(draft)}
         >
           Save trail details
-        </Typography>
+        </Button>
       </Stack>
     </Box>
   );

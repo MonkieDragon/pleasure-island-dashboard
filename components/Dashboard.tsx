@@ -181,6 +181,8 @@ export default function Dashboard() {
     null,
   );
   const [selectedTrailId, setSelectedTrailId] = useState<string | null>(null);
+  /** Trail to restore when backing out of a location opened from that trail. */
+  const [trailReturnId, setTrailReturnId] = useState<string | null>(null);
 
   const accessibleRegions = useMemo(() => {
     if (!accessOk) return [];
@@ -257,6 +259,7 @@ export default function Dashboard() {
       setSelectedStepId(null);
       setSelectedTreasureId(null);
       setSelectedTrailId(null);
+      setTrailReturnId(null);
       setSteps([]);
       setRegionSteps([]);
       setTreasures([]);
@@ -1108,6 +1111,7 @@ export default function Dashboard() {
     setSelectedStepId(null);
     setSelectedTreasureId(null);
     setSelectedTrailId(null);
+    setTrailReturnId(null);
     setSteps([]);
     setRegionSteps([]);
     setTreasures([]);
@@ -1122,6 +1126,7 @@ export default function Dashboard() {
     setSelectedStepId(null);
     setSelectedTreasureId(null);
     setSelectedTrailId(null);
+    setTrailReturnId(null);
     setSteps([]);
   };
 
@@ -1133,6 +1138,7 @@ export default function Dashboard() {
     setSelectedStepId(null);
     setSelectedTreasureId(null);
     setSelectedTrailId(null);
+    setTrailReturnId(null);
     setSteps([]);
     setRegionSteps([]);
     setTreasures([]);
@@ -1146,6 +1152,7 @@ export default function Dashboard() {
     setSelectedStepId(null);
     setSelectedTreasureId(null);
     setSelectedTrailId(null);
+    setTrailReturnId(null);
     setSteps([]);
     setRegionSteps([]);
     setTreasures([]);
@@ -1159,10 +1166,15 @@ export default function Dashboard() {
       setSelectedStepId(null);
       setSelectedTreasureId(null);
       setSteps([]);
+      if (trailReturnId) {
+        setSelectedTrailId(trailReturnId);
+        setTrailReturnId(null);
+      }
       return;
     }
     if (selectedTrailId) {
       setSelectedTrailId(null);
+      setTrailReturnId(null);
       return;
     }
     if (selectedRegionId) {
@@ -1178,6 +1190,7 @@ export default function Dashboard() {
     if (nav.type === "selectCountry") return applySelectCountry(nav.countryId);
     if (nav.type === "selectRegion") return applySelectRegion(nav.regionId);
     if (nav.type === "selectChain") {
+      setTrailReturnId(selectedTrailId);
       setSelectedStepId(null);
       setSelectedTreasureId(null);
       setSelectedTrailId(null);
@@ -1188,6 +1201,7 @@ export default function Dashboard() {
       setSelectedStepId(null);
       setSelectedTreasureId(null);
       setSteps([]);
+      setTrailReturnId(null);
       setSelectedTrailId(nav.trailId);
     }
   };
@@ -1462,6 +1476,7 @@ export default function Dashboard() {
     const trail = data as Trail;
     setTrails((prev) => [...prev, trail]);
     setSelectedTrailId(trail.id);
+    setTrailReturnId(null);
     setSelectedChainId(null);
     setSelectedStepId(null);
     setSelectedTreasureId(null);
@@ -1863,6 +1878,7 @@ export default function Dashboard() {
       setSelectedStepId(null);
       setSelectedChainId(null);
       setSelectedTrailId(null);
+      setTrailReturnId(null);
       setSteps([]);
       setSelectedTreasureId(id);
       if (isMobile) setMobileLowerTab(1);
