@@ -165,6 +165,10 @@ type Props = {
       isFree: boolean;
     },
   ) => Promise<void>;
+  onEstimateTrailRoute: (
+    trailId: string,
+    mode: "walk" | "scooter",
+  ) => Promise<{ distanceKm: number; durationMinutes: number }>;
   onAddTrailStop: (input: { trailId: string; chainId: string }) => Promise<void>;
   onRemoveTrailStop: (stopId: string) => Promise<void>;
   onReorderTrailStops: (orderedStopIds: string[]) => Promise<void>;
@@ -577,6 +581,7 @@ export default function Sidebar({
   onSetChainOptional,
   onSetChainIsEatery,
   onUpdateTrailMetadata,
+  onEstimateTrailRoute,
   onAddTrailStop,
   onRemoveTrailStop,
   onReorderTrailStops,
@@ -1818,6 +1823,9 @@ export default function Sidebar({
                     onSave={async (metadata) => {
                       await onUpdateTrailMetadata(selectedTrail.id, metadata);
                     }}
+                    onEstimateRoute={async (mode) =>
+                      onEstimateTrailRoute(selectedTrail.id, mode)
+                    }
                   />
                 ) : null}
 

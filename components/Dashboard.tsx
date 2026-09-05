@@ -10,6 +10,11 @@ import {
   uploadStorageImage,
 } from "@/lib/storageImage";
 import { withImageCacheBust } from "@/lib/storageImageUrl";
+import {
+  estimateTrailRoute,
+  type TrailRouteEstimateMode,
+  type TrailRouteEstimateResult,
+} from "@/lib/estimateTrailRoute";
 
 import {
   COUNTRIES,
@@ -1458,6 +1463,30 @@ export default function Dashboard() {
     );
   };
 
+  const estimateTrailRouteStats = async (
+    trailId: string,
+    mode: TrailRouteEstimateMode,
+  ): Promise<TrailRouteEstimateResult> => {
+    const stops = trailStops
+      .filter((s) => s.trail_id === trailId)
+      .slice()
+      .sort((a, b) => a.order_index - b.order_index);
+    const byId = new Map(chains.map((c) => [c.id, c] as const));
+    const points = stops
+      .map((s) => byId.get(s.chain_id) || null)
+      .filter(
+        (c): c is PuzzleChain =>
+          c != null &&
+          typeof c.latitude === "number" &&
+          typeof c.longitude === "number" &&
+          Number.isFinite(c.latitude) &&
+          Number.isFinite(c.longitude),
+      )
+      .map((c) => ({ lat: c.latitude, lng: c.longitude }));
+
+    return estimateTrailRoute({ mode, points });
+  };
+
   const createTrail = async (input: { title: string; regionId: string }) => {
     const title = input.title.trim();
     if (!title) throw new Error("Title is required.");
@@ -2021,6 +2050,7 @@ export default function Dashboard() {
       onSetChainOptional={setChainOptional}
       onSetChainIsEatery={setChainIsEatery}
       onUpdateTrailMetadata={updateTrailMetadata}
+      onEstimateTrailRoute={estimateTrailRouteStats}
       onAddTrailStop={addTrailStop}
       onRemoveTrailStop={removeTrailStop}
       onReorderTrailStops={reorderTrailStops}
