@@ -61,6 +61,8 @@ type Props = {
   onMoveRegion: (id: string, lat: number, lng: number) => void;
 
   newChainDraftLatLng: [number, number] | null;
+  /** When true, draft location marker uses optional (orange) styling. */
+  newChainDraftOptional?: boolean;
   newTreasureDraftLatLng: [number, number] | null;
   onSetNewChainDraftLatLng: (lat: number, lng: number) => void;
   onSetNewTreasureDraftLatLng: (lat: number, lng: number) => void;
@@ -253,6 +255,7 @@ export default function MapView(props: Props) {
     onMoveTreasure,
     onMoveRegion,
     newChainDraftLatLng,
+    newChainDraftOptional = true,
     newTreasureDraftLatLng,
     onSetNewChainDraftLatLng,
     onSetNewTreasureDraftLatLng,
@@ -549,7 +552,7 @@ export default function MapView(props: Props) {
           {newChainDraftLatLng && (
             <Marker
               position={newChainDraftLatLng}
-              icon={mapMarkerIcon}
+              icon={chainMapMarkerIcon(newChainDraftOptional)}
               draggable
               eventHandlers={{
                 dragend: (e) => {

@@ -107,6 +107,8 @@ type Props = {
     regionId: string;
     latitude: number;
     longitude: number;
+    optional: boolean;
+    placeType: PlaceType;
   }) => Promise<void>;
   onCreateTrail: (input: { title: string; regionId: string }) => Promise<void>;
   onCreateStep: (input: { chainId: string }) => Promise<void>;
@@ -118,8 +120,20 @@ type Props = {
   onZoomToChain: () => void;
   onZoomToTrail: () => void;
 
-  newChainDraft: { title: string; lat: string; lng: string };
-  onNewChainDraftChange: (next: { title: string; lat: string; lng: string }) => void;
+  newChainDraft: {
+    title: string;
+    lat: string;
+    lng: string;
+    optional: boolean;
+    placeType: PlaceType;
+  };
+  onNewChainDraftChange: (next: {
+    title: string;
+    lat: string;
+    lng: string;
+    optional: boolean;
+    placeType: PlaceType;
+  }) => void;
   onStartNewChainPlacement: () => void;
   onCancelNewChainPlacement: () => void;
   newChainPlacementActive: boolean;
@@ -673,6 +687,18 @@ export default function Sidebar({
   const chainTitle = newChainDraft.title;
   const chainLat = newChainDraft.lat;
   const chainLng = newChainDraft.lng;
+  const chainOptional = newChainDraft.optional;
+  const chainPlaceType = isPlaceType(newChainDraft.placeType)
+    ? newChainDraft.placeType
+    : "other";
+
+  const emptyChainDraft = () => ({
+    title: "",
+    lat: "",
+    lng: "",
+    optional: true as boolean,
+    placeType: "other" as PlaceType,
+  });
   const [createLocationMode, setCreateLocationMode] = useState(false);
   const [createTrailMode, setCreateTrailMode] = useState(false);
   const [newTrailTitle, setNewTrailTitle] = useState("");
@@ -887,8 +913,10 @@ export default function Sidebar({
         regionId: selectedRegionId,
         latitude,
         longitude,
+        optional: chainOptional,
+        placeType: chainPlaceType,
       });
-      onNewChainDraftChange({ title: "", lat: "", lng: "" });
+      onNewChainDraftChange(emptyChainDraft());
       onCancelNewChainPlacement();
       setCreateLocationMode(false);
     } catch (e) {
@@ -1084,13 +1112,28 @@ export default function Sidebar({
     title: string;
     lat: string;
     lng: string;
+    optional: boolean;
+    placeType: PlaceType;
     placementActive: boolean;
-    onChange: (next: { title: string; lat: string; lng: string }) => void;
+    onChange: (next: {
+      title: string;
+      lat: string;
+      lng: string;
+      optional: boolean;
+      placeType: PlaceType;
+    }) => void;
     onPickOnMap: () => void;
     onCancel: () => void;
     onCreate: () => void;
     createDisabled: boolean;
   }) => {
+    const draft = {
+      title: input.title,
+      lat: input.lat,
+      lng: input.lng,
+      optional: input.optional,
+      placeType: input.placeType,
+    };
     return (
       <Box sx={{ px: 1 }}>
         <Typography variant="overline" sx={{ color: "text.secondary" }}>
@@ -1100,7 +1143,7 @@ export default function Sidebar({
         <TextField
           label="Title"
           value={input.title}
-          onChange={(e) => input.onChange({ title: e.target.value, lat: input.lat, lng: input.lng })}
+          onChange={(e) => input.onChange({ ...draft, title: e.target.value })}
           fullWidth
           autoFocus
           size="small"
@@ -1111,7 +1154,7 @@ export default function Sidebar({
           <TextField
             label="Latitude"
             value={input.lat}
-            onChange={(e) => input.onChange({ title: input.title, lat: e.target.value, lng: input.lng })}
+            onChange={(e) => input.onChange({ ...draft, lat: e.target.value })}
             fullWidth
             size="small"
             inputMode="decimal"
@@ -1119,12 +1162,47 @@ export default function Sidebar({
           <TextField
             label="Longitude"
             value={input.lng}
-            onChange={(e) => input.onChange({ title: input.title, lat: input.lat, lng: e.target.value })}
+            onChange={(e) => input.onChange({ ...draft, lng: e.target.value })}
             fullWidth
             size="small"
             inputMode="decimal"
           />
         </Box>
+
+        <FormControlLabel
+          sx={{ mt: 0.5, ml: 0 }}
+          control={
+            <Checkbox
+              size="small"
+              checked={input.optional}
+              onChange={(e) =>
+                input.onChange({ ...draft, optional: e.target.checked })
+              }
+            />
+          }
+          label="Side find (optional)"
+        />
+
+        <FormControl size="small" fullWidth sx={{ mt: 1 }}>
+          <InputLabel id="new-place-type-label">Place type</InputLabel>
+          <Select
+            labelId="new-place-type-label"
+            label="Place type"
+            value={input.placeType}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (isPlaceType(next)) {
+                input.onChange({ ...draft, placeType: next });
+              }
+            }}
+          >
+            {PLACE_TYPES.map((t) => (
+              <MenuItem key={t} value={t}>
+                {PLACE_TYPE_LABELS[t]}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
 
         <Button
           fullWidth
@@ -1380,12 +1458,14 @@ export default function Sidebar({
                 title: chainTitle,
                 lat: chainLat,
                 lng: chainLng,
+                optional: chainOptional,
+                placeType: chainPlaceType,
                 placementActive: newChainPlacementActive,
                 onChange: onNewChainDraftChange,
                 onPickOnMap: onStartNewChainPlacement,
                 onCancel: () => {
                   setCreateError(null);
-                  onNewChainDraftChange({ title: "", lat: "", lng: "" });
+                  onNewChainDraftChange(emptyChainDraft());
                   onCancelNewChainPlacement();
                   setCreateLocationMode(false);
                 },
@@ -1629,7 +1709,7 @@ export default function Sidebar({
                       variant="outlined"
                       onClick={() => {
                         setCreateError(null);
-                        onNewChainDraftChange({ title: "", lat: "", lng: "" });
+                        onNewChainDraftChange(emptyChainDraft());
                         setCreateLocationMode(true);
                       }}
                     >

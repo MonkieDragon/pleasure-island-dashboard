@@ -44,6 +44,22 @@ import SingleStepEditor from "./SingleStepEditor";
 import SingleTreasureEditor from "./SingleTreasureEditor";
 import AdminAccessPanel from "./AdminAccessPanel";
 import dynamic from "next/dynamic";
+
+type NewChainDraft = {
+  title: string;
+  lat: string;
+  lng: string;
+  optional: boolean;
+  placeType: PlaceType;
+};
+
+const emptyNewChainDraft = (): NewChainDraft => ({
+  title: "",
+  lat: "",
+  lng: "",
+  optional: true,
+  placeType: "other",
+});
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import {
@@ -310,11 +326,7 @@ export default function Dashboard() {
   const [mobileLowerTab, setMobileLowerTab] = useState(0);
   const [keyboardInsetPx, setKeyboardInsetPx] = useState(0);
 
-  const [newChainDraft, setNewChainDraft] = useState<{
-    title: string;
-    lat: string;
-    lng: string;
-  }>({ title: "", lat: "", lng: "" });
+  const [newChainDraft, setNewChainDraft] = useState<NewChainDraft>(emptyNewChainDraft);
 
   const [newTreasureDraft, setNewTreasureDraft] = useState<{
     lat: string;
@@ -1351,6 +1363,8 @@ export default function Dashboard() {
     regionId: string;
     latitude: number;
     longitude: number;
+    optional: boolean;
+    placeType: PlaceType;
   }) => {
     const { data, error } = await supabase
       .from("puzzle_chains")
@@ -1360,8 +1374,8 @@ export default function Dashboard() {
         latitude: input.latitude,
         longitude: input.longitude,
         ready_to_publish: false,
-        optional: true,
-        place_type: "other",
+        optional: input.optional,
+        place_type: input.placeType,
       })
       .select()
       .single();
@@ -2094,6 +2108,7 @@ export default function Dashboard() {
       onMoveTreasure={moveTreasure}
       onMoveRegion={updateRegionLocation}
       newChainDraftLatLng={newChainDraftLatLng}
+      newChainDraftOptional={newChainDraft.optional}
       newTreasureDraftLatLng={newTreasureDraftLatLng}
       onSetNewChainDraftLatLng={(lat, lng) => {
         setNewChainDraft((prev) => ({ ...prev, lat: String(lat), lng: String(lng) }));
