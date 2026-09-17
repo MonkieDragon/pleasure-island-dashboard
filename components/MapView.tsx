@@ -18,7 +18,7 @@ import L from "leaflet";
 import MyLocationIcon from "@mui/icons-material/MyLocation";
 import { Alert, Box, Fab, Snackbar, Typography } from "@mui/material";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { mapMarkerIcon } from "@/lib/mapMarkerIcon";
+import { mapMarkerIcon, chainMapMarkerIcon } from "@/lib/mapMarkerIcon";
 
 type Props = {
   countries: Country[];
@@ -620,7 +620,7 @@ export default function MapView(props: Props) {
                 <Marker
                   key={c.id}
                   position={[c.latitude, c.longitude]}
-                  icon={mapMarkerIcon}
+                  icon={chainMapMarkerIcon(c.optional !== false)}
                   eventHandlers={{
                     click: () => onSelectChain(c.id),
                     mouseover: () =>
@@ -637,7 +637,7 @@ export default function MapView(props: Props) {
                 <Marker
                   key={`trail-stop-${c.id}`}
                   position={[c.latitude, c.longitude]}
-                  icon={mapMarkerIcon}
+                  icon={chainMapMarkerIcon(c.optional !== false)}
                   eventHandlers={{
                     click: () => onSelectChain(c.id),
                     mouseover: () =>

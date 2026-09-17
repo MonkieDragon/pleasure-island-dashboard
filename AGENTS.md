@@ -91,6 +91,23 @@ After any schema change:
 
 Domain terms must stay aligned with the player app. Do not rename or reinterpret them for either codebase.
 
+## Live Supabase data
+
+Assume the Supabase CLI is available and this repo is linked to the hosted Pleasure Island project. Do **not** ask the user to confirm install, login, or link.
+
+- Run CLI work from this repo (`puzzle-dashboard`). Prefer `npx supabase` or existing npm scripts (`db:types`, `db:pull`, `db:sync`).
+- When a task depends on real content (what regions/trails/locations/steps exist, counts, publish state, sample rows), **query the linked project** (e.g. `npx supabase inspect db table-stats --linked`, targeted dumps, or existing scripts using `.env.local`) instead of guessing from migrations or generated types alone.
+- Docker is required for `db:pull` / shadow DB diffs; it is **not** required for live reads against the linked hosted project.
+
+## Images (Storage)
+
+- Public bucket: `images`
+- Tables store `image_path` (object key), not full URLs
+
+## Region content generation
+
+For generating region / trail / location / step content, follow `.agents/skills/generate-region-content/`.
+
 ---
 
 # 3. DOMAIN TERMS (DO NOT RENAME)
@@ -104,7 +121,7 @@ Domain terms must stay aligned with the player app. Do not rename or reinterpret
 Rules:
 
 - A location may appear on **at most one** trail (or none).
-- Locations not on a published trail stay in the dashboard atlas; players never see them.
+- `ready_to_publish` exists on trails, locations (`puzzle_chains`), and steps. The player catalog is published trails only; unpublished / atlas-only locations stay dashboard-side and players never see them.
 - Trail metadata (description, duration, distance, transport, free/paid, cover image) lives on **trails**, not on locations.
 - Never merge trail into chain or replace chain/step with “puzzle”.
 

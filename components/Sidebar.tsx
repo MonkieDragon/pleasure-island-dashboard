@@ -10,6 +10,10 @@ import {
   Trail,
   TrailStop,
   Treasure,
+  PLACE_TYPES,
+  PLACE_TYPE_LABELS,
+  isPlaceType,
+  type PlaceType,
 } from "@/types/database";
 import type { MapHover } from "@/types/mapUi";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -22,18 +26,23 @@ import {
   Avatar,
   Box,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  FormControl,
+  FormControlLabel,
   IconButton,
+  InputLabel,
   List,
   ListItemButton,
   ListItemText,
   MenuItem,
   Paper,
+  Select,
   Stack,
   TextField,
   Tooltip,
@@ -154,7 +163,7 @@ type Props = {
   onRenameChain: (chainId: string, title: string) => Promise<void>;
   onRenameTrail: (trailId: string, title: string) => Promise<void>;
   onSetChainOptional: (chainId: string, optional: boolean) => Promise<void>;
-  onSetChainIsEatery: (chainId: string, isEatery: boolean) => Promise<void>;
+  onSetChainPlaceType: (chainId: string, placeType: PlaceType) => Promise<void>;
   onUpdateTrailMetadata: (
     trailId: string,
     metadata: {
@@ -579,7 +588,7 @@ export default function Sidebar({
   onRenameChain,
   onRenameTrail,
   onSetChainOptional,
-  onSetChainIsEatery,
+  onSetChainPlaceType,
   onUpdateTrailMetadata,
   onEstimateTrailRoute,
   onAddTrailStop,
@@ -1046,11 +1055,11 @@ export default function Sidebar({
     }
   };
 
-  const toggleOptional = async () => {
+  const setOptional = async (optional: boolean) => {
     if (!selectedChain) return;
     setFlagBusy(true);
     try {
-      await onSetChainOptional(selectedChain.id, !selectedChain.optional);
+      await onSetChainOptional(selectedChain.id, optional);
     } catch (e) {
       setCreateError(formatSupabaseError(e));
     } finally {
@@ -1058,11 +1067,11 @@ export default function Sidebar({
     }
   };
 
-  const toggleEatery = async () => {
+  const setPlaceType = async (placeType: PlaceType) => {
     if (!selectedChain) return;
     setFlagBusy(true);
     try {
-      await onSetChainIsEatery(selectedChain.id, !selectedChain.is_eatery);
+      await onSetChainPlaceType(selectedChain.id, placeType);
     } catch (e) {
       setCreateError(formatSupabaseError(e));
     } finally {
@@ -1970,33 +1979,50 @@ export default function Sidebar({
                 ) : null}
 
                 {selectedChain ? (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1.5,
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <Button size="small" variant="outlined" onClick={openRenameDialog}>
                       Rename
                     </Button>
-                    <Chip
-                      size="small"
-                      label={selectedChain.optional !== false ? "Optional" : "Main"}
-                      clickable={!flagBusy}
-                      disabled={flagBusy}
-                      onClick={toggleOptional}
-                      color="primary"
-                      variant={selectedChain.optional !== false ? "outlined" : "filled"}
-                      sx={
-                        selectedChain.optional !== false
-                          ? undefined
-                          : { fontWeight: 700 }
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={selectedChain.optional !== false}
+                          disabled={flagBusy}
+                          onChange={(e) => void setOptional(e.target.checked)}
+                        />
                       }
+                      label="Side find (optional)"
                     />
-                    <Chip
-                      size="small"
-                      label={selectedChain.is_eatery ? "Eatery" : "Attraction"}
-                      clickable={!flagBusy}
-                      disabled={flagBusy}
-                      onClick={toggleEatery}
-                      color="default"
-                      variant={selectedChain.is_eatery ? "filled" : "outlined"}
-                    />
+                    <FormControl size="small" sx={{ minWidth: 140 }} disabled={flagBusy}>
+                      <InputLabel id="place-type-label">Place type</InputLabel>
+                      <Select
+                        labelId="place-type-label"
+                        label="Place type"
+                        value={
+                          isPlaceType(selectedChain.place_type)
+                            ? selectedChain.place_type
+                            : "other"
+                        }
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          if (isPlaceType(next)) void setPlaceType(next);
+                        }}
+                      >
+                        {PLACE_TYPES.map((t) => (
+                          <MenuItem key={t} value={t}>
+                            {PLACE_TYPE_LABELS[t]}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   </Box>
                 ) : null}
 

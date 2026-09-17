@@ -31,6 +31,40 @@ export function isPuzzleStepType(value: string): value is PuzzleStepType {
   );
 }
 
+/** Location category for authoring + future map icons. */
+export type PlaceType =
+  | "landmark"
+  | "art"
+  | "eatery"
+  | "market"
+  | "nature"
+  | "shop"
+  | "other";
+
+export const PLACE_TYPES: readonly PlaceType[] = [
+  "landmark",
+  "art",
+  "eatery",
+  "market",
+  "nature",
+  "shop",
+  "other",
+] as const;
+
+export const PLACE_TYPE_LABELS: Record<PlaceType, string> = {
+  landmark: "Landmark",
+  art: "Art",
+  eatery: "Eatery",
+  market: "Market",
+  nature: "Nature",
+  shop: "Shop",
+  other: "Other",
+};
+
+export function isPlaceType(value: string): value is PlaceType {
+  return (PLACE_TYPES as readonly string[]).includes(value);
+}
+
 export function isQuestionStepType(
   type: PuzzleStepType,
 ): type is "text" | "number" {

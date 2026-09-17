@@ -34,6 +34,7 @@ import {
   type CameraOverlayConfig,
   type InteractiveConfig,
   type JigsawConfig,
+  type PlaceType,
   type SymbolCodexConfig,
 } from "@/types/database";
 import type { MapHover } from "@/types/mapUi";
@@ -1360,7 +1361,7 @@ export default function Dashboard() {
         longitude: input.longitude,
         ready_to_publish: false,
         optional: true,
-        is_eatery: false,
+        place_type: "other",
       })
       .select()
       .single();
@@ -1405,14 +1406,14 @@ export default function Dashboard() {
     );
   };
 
-  const setChainIsEatery = async (chainId: string, isEatery: boolean) => {
+  const setChainPlaceType = async (chainId: string, placeType: PlaceType) => {
     const { error } = await supabase
       .from("puzzle_chains")
-      .update({ is_eatery: isEatery })
+      .update({ place_type: placeType })
       .eq("id", chainId);
     if (error) throw new Error(formatSupabaseError(error));
     setChains((prev) =>
-      prev.map((c) => (c.id === chainId ? { ...c, is_eatery: isEatery } : c)),
+      prev.map((c) => (c.id === chainId ? { ...c, place_type: placeType } : c)),
     );
   };
 
@@ -2048,7 +2049,7 @@ export default function Dashboard() {
       onRenameChain={renameChain}
       onRenameTrail={renameTrail}
       onSetChainOptional={setChainOptional}
-      onSetChainIsEatery={setChainIsEatery}
+      onSetChainPlaceType={setChainPlaceType}
       onUpdateTrailMetadata={updateTrailMetadata}
       onEstimateTrailRoute={estimateTrailRouteStats}
       onAddTrailStop={addTrailStop}
