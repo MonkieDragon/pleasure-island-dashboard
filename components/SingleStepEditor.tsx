@@ -41,6 +41,8 @@ type Draft = {
   content: string;
   notes: string;
   answerText: string;
+  /** Comma-separated alternative accepted answers (free-form match steps). */
+  alternativeAnswersText: string;
   incorrectOption1Text: string;
   incorrectOption2Text: string;
   incorrectOption3Text: string;
@@ -116,6 +118,54 @@ function usesTextAnswerToken(draft: Draft): boolean {
   return draft.type === "text" || interactiveUsesTextAnswerToken(draft);
 }
 
+/** Steps that match a typed primary answer (and can have alternatives). */
+function showsAlternativeAnswers(draft: Draft): boolean {
+  return draft.type === "text" || interactiveUsesTextAnswerToken(draft);
+}
+
+function alternativeAnswersFromStep(step: PuzzleStep): string {
+  const raw = step.alternative_answers;
+  if (!Array.isArray(raw) || raw.length === 0) return "";
+  return raw.filter((x): x is string => typeof x === "string" && x.trim() !== "").join(", ");
+}
+
+function parseAlternativeAnswersText(
+  text: string,
+  draft: Draft,
+): { answers: string[]; error: string | null } {
+  const parts = text
+    .split(/[,;\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+  if (parts.length === 0) return { answers: [], error: null };
+
+  const primary = draft.answerText.trim();
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const part of parts) {
+    const token = usesTextAnswerToken(draft) ? sanitizeAnswerToken(part) : part;
+    if (token === "") continue;
+
+    if (usesTextAnswerToken(draft)) {
+      if (!isAnswerToken(token)) {
+        return {
+          answers: [],
+          error: `Alternative "${part}" must be one word — letters and numbers only.`,
+        };
+      }
+    }
+
+    const key = token.toLowerCase();
+    if (primary !== "" && key === primary.toLowerCase()) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(token);
+  }
+
+  return { answers: out, error: null };
+}
+
 const DEFAULT_INTERACTIVE_CONFIG: CameraOverlayConfig = {
   subtype: "camera_overlay",
   overlayImagePath: "",
@@ -172,6 +222,7 @@ function toDraft(step: PuzzleStep): Draft {
     content: step.content ?? "",
     notes: step.notes ?? "",
     answerText,
+    alternativeAnswersText: alternativeAnswersFromStep(step),
     ...incorrectOptionsFromStep(step.multiple_choice_options, step.answer),
     latText: step.latitude == null ? "" : String(step.latitude),
     lngText: step.longitude == null ? "" : String(step.longitude),
@@ -766,6 +817,7 @@ export default function SingleStepEditor({
       base.content !== draft.content ||
       base.notes !== draft.notes ||
       base.answerText !== draft.answerText ||
+      base.alternativeAnswersText !== draft.alternativeAnswersText ||
       base.incorrectOption1Text !== draft.incorrectOption1Text ||
       base.incorrectOption2Text !== draft.incorrectOption2Text ||
       base.incorrectOption3Text !== draft.incorrectOption3Text ||
@@ -816,6 +868,13 @@ export default function SingleStepEditor({
       if (incorrect.some((option) => option === "")) {
         return "Multiple choice steps need 3 incorrect options.";
       }
+    }
+    if (showsAlternativeAnswers(draft)) {
+      const parsed = parseAlternativeAnswersText(
+        draft.alternativeAnswersText,
+        draft,
+      );
+      if (parsed.error) return parsed.error;
     }
     if (draft.type === "interactive") {
       const cfg = draft.interactiveConfig;
@@ -880,6 +939,10 @@ export default function SingleStepEditor({
           ]
         : null;
 
+    const alternative_answers = showsAlternativeAnswers(draft)
+      ? parseAlternativeAnswersText(draft.alternativeAnswersText, draft).answers
+      : [];
+
     const config = draft.type === "interactive" ? draft.interactiveConfig : null;
     const savedHint = parseStepHint(step.hints);
     const hints = serializeStepHint({
@@ -893,6 +956,7 @@ export default function SingleStepEditor({
       type: draft.type,
       content: draft.content,
       answer,
+      alternative_answers,
       multiple_choice_options,
       notes: draft.notes || null,
       hints,
@@ -1106,6 +1170,31 @@ export default function SingleStepEditor({
                     <FormHelperText>{answerError}</FormHelperText>
                   )}
               </FormControl>
+            )}
+
+            {showAnswerRow && showsAlternativeAnswers(draft) && (
+              <TextField
+                label="Alternative answers"
+                value={draft.alternativeAnswersText}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const next = usesTextAnswerToken(draft)
+                    ? raw
+                        .split(/([,;\n]+)/)
+                        .map((part) =>
+                          /^[,;\n]+$/.test(part) ? part : sanitizeAnswerToken(part),
+                        )
+                        .join("")
+                    : raw;
+                  setDraft({ alternativeAnswersText: next });
+                }}
+                placeholder="e.g. pagoda, stupa"
+                helperText="Comma-separated. Same rules as the primary answer. Any match counts as correct."
+                size="small"
+                fullWidth
+                {...mobileInputProps}
+                error={!!answerError && showsAlternativeAnswers(draft)}
+              />
             )}
 
             {draft.type === "multiple_choice" && (

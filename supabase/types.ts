@@ -142,6 +142,7 @@ export type Database = {
       }
       puzzle_steps: {
         Row: {
+          alternative_answers: string[]
           answer: string | null
           chain_id: string
           config: Json | null
@@ -159,6 +160,7 @@ export type Database = {
           type: string
         }
         Insert: {
+          alternative_answers?: string[]
           answer?: string | null
           chain_id: string
           config?: Json | null
@@ -176,6 +178,7 @@ export type Database = {
           type: string
         }
         Update: {
+          alternative_answers?: string[]
           answer?: string | null
           chain_id?: string
           config?: Json | null
