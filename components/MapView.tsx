@@ -298,14 +298,21 @@ export default function MapView(props: Props) {
   const trailStopChains = useMemo(() => {
     const byId = new Map(regionChains.map((c) => [c.id, c] as const));
     return selectedTrailStops
-      .map((s) => byId.get(s.chain_id) || null)
-      .filter((c): c is PuzzleChain => c !== null);
+      .map((s) => {
+        const chain = byId.get(s.chain_id) || null;
+        if (!chain) return null;
+        return { chain, optional: s.optional === true };
+      })
+      .filter(
+        (row): row is { chain: PuzzleChain; optional: boolean } => row !== null,
+      );
   }, [selectedTrailStops, regionChains]);
 
   const trailRoute = useMemo(
     () =>
       trailStopChains.map(
-        (c) => [c.latitude, c.longitude] as [number, number],
+        (row) =>
+          [row.chain.latitude, row.chain.longitude] as [number, number],
       ),
     [trailStopChains],
   );
@@ -635,12 +642,12 @@ export default function MapView(props: Props) {
             })}
 
           {!!selectedTrailId &&
-            trailStopChains.map((c) => {
+            trailStopChains.map(({ chain: c, optional }) => {
               return (
                 <Marker
                   key={`trail-stop-${c.id}`}
                   position={[c.latitude, c.longitude]}
-                  icon={chainMapMarkerIcon(c.optional !== false)}
+                  icon={chainMapMarkerIcon(optional)}
                   eventHandlers={{
                     click: () => onSelectChain(c.id),
                     mouseover: () =>

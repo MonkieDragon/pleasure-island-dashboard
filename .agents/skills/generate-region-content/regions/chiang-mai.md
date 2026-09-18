@@ -45,12 +45,18 @@ Allowed values: `not_started` | `draft` | `approved`
 - **Locations (ordered):** Mae Sa Waterfall → Queen Sirikit Botanic Garden → Mon Jam
 - **Why:** Reddit and scooter guides push Samoeng/Mae Sa as the first “real” ride day; stripped of tour-model animal stops.
 
-### 6. Doi Inthanon Day
+### 6. Doi Inthanon (trail group — 3 variants)
 - **Mode:** scooter
 - **Duration:** full day
-- **Description:** Thailand’s highest peak day: major waterfall stop plus the twin royal chedis near the summit.
-- **Locations (ordered):** Wachirathan Waterfall → Twin Chedis (Naphamethinidon & Naphaphonphumisiri)
-- **Why:** Standard long day-tour / self-drive mountain product; park entry is independent (not operator-gated).
+- **Status in DB:** trail group `Doi Inthanon` with variants Classic / Kew Mae Pan / Pha Dok Siew (unpublished)
+- **Classic (required):** Summit → Ang Ka → Royal Pagodas → Wachirathan  
+  **Optional:** Sirithan, Mae Klang Waterfall, Baan Khun Klang (lunch)
+- **Kew Mae Pan (required):** Summit → Ang Ka → Kew Mae Pan → Wachirathan  
+  **Optional:** Royal Pagodas (seasonal ridge walk; guide required)
+- **Pha Dok Siew (required):** Royal Pagodas → Pha Dok Siew → Baan Mae Klang Luang → Wachirathan  
+  **Optional:** Mae Klang Waterfall
+- **Atlas only (not on these variants):** Mae Ya Waterfall (long detour)
+- **Why:** Tour packages offer 1–3 day shapes; mutually exclusive long hikes are variants; skippable extras are optional stops.
 
 ## Approved day shapes
 
@@ -86,8 +92,16 @@ _(Empty until Phase 1 approved.)_
 - Mae Sa Waterfall
 - Queen Sirikit Botanic Garden
 - Mon Jam
+- Twin Chedis (Naphamethinidon & Naphaphonphumisiri) / Royal Pagodas
+- Ang Ka Nature Trail
+- Kew Mae Pan Nature Trail
+- Pha Dok Siew Nature Trail
+- Baan Mae Klang Luang Village
 - Wachirathan Waterfall
-- Twin Chedis (Naphamethinidon & Naphaphonphumisiri)
+- Sirithan Waterfall (optional on Classic)
+- Mae Klang Waterfall (optional)
+- Baan Khun Klang Village (optional lunch/café hub — not a must-see)
+- Mae Ya Waterfall (atlas / future waterfall variant — long detour)
 
 ## Locations — maybe
 

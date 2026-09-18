@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Trail } from "@/types/database";
+import type { Trail, TrailGroup } from "@/types/database";
 import {
   Box,
   Button,
@@ -20,6 +20,9 @@ export type TrailMetadataDraft = {
   distanceKm: string;
   transportMode: "" | "walk" | "scooter";
   isFree: boolean;
+  trailGroupId: string | null;
+  variantLabel: string;
+  variantSort: string;
 };
 
 type RouteEstimate = {
@@ -29,6 +32,7 @@ type RouteEstimate = {
 
 type Props = {
   trail: Trail;
+  trailGroups: TrailGroup[];
   onSave: (metadata: TrailMetadataDraft) => Promise<void> | void;
   onEstimateRoute: (
     mode: "walk" | "scooter",
@@ -46,11 +50,15 @@ function toDraft(trail: Trail): TrailMetadataDraft {
         ? trail.transport_mode
         : "walk",
     isFree: trail.is_free ?? true,
+    trailGroupId: trail.trail_group_id,
+    variantLabel: trail.variant_label ?? "",
+    variantSort: String(trail.variant_sort ?? 0),
   };
 }
 
 export default function TrailMetadataEditor({
   trail,
+  trailGroups,
   onSave,
   onEstimateRoute,
 }: Props) {
@@ -58,6 +66,8 @@ export default function TrailMetadataEditor({
   const [estimating, setEstimating] = useState(false);
   const [estimate, setEstimate] = useState<RouteEstimate | null>(null);
   const [estimateError, setEstimateError] = useState<string | null>(null);
+
+  const regionGroups = trailGroups.filter((g) => g.region_id === trail.region_id);
 
   useEffect(() => {
     setDraft(toDraft(trail));
@@ -68,6 +78,9 @@ export default function TrailMetadataEditor({
     trail.distance_km,
     trail.transport_mode,
     trail.is_free,
+    trail.trail_group_id,
+    trail.variant_label,
+    trail.variant_sort,
   ]);
 
   useEffect(() => {
@@ -99,6 +112,56 @@ export default function TrailMetadataEditor({
         Trail details (player-facing)
       </Typography>
       <Stack spacing={1.5} sx={{ mt: 1 }}>
+        <FormControl size="small" fullWidth>
+          <InputLabel id="trail-group-label">Trail group</InputLabel>
+          <Select
+            labelId="trail-group-label"
+            label="Trail group"
+            value={draft.trailGroupId ?? ""}
+            onChange={(e) => {
+              const value = e.target.value;
+              setDraft((d) => ({
+                ...d,
+                trailGroupId: value === "" ? null : value,
+                variantLabel:
+                  value === ""
+                    ? ""
+                    : d.variantLabel.trim() || "Classic",
+              }));
+            }}
+          >
+            <MenuItem value="">Standalone (no group)</MenuItem>
+            {regionGroups.map((g) => (
+              <MenuItem key={g.id} value={g.id}>
+                {g.title}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        {draft.trailGroupId ? (
+          <>
+            <TextField
+              label="Variant label"
+              value={draft.variantLabel}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, variantLabel: e.target.value }))
+              }
+              size="small"
+              fullWidth
+              helperText="Shown when players pick a package (e.g. Classic)"
+            />
+            <TextField
+              label="Variant sort"
+              value={draft.variantSort}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, variantSort: e.target.value }))
+              }
+              size="small"
+              type="number"
+              fullWidth
+            />
+          </>
+        ) : null}
         <TextField
           label="Description"
           value={draft.description}

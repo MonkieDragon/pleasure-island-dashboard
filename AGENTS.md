@@ -116,13 +116,17 @@ For generating region / trail / location / step content, follow `.agents/skills/
 - **chain** (`puzzle_chains`) — a **location**: a real-world map pin with ordered steps. UI says “location”.
 - **step** — ordered gameplay clue inside a location
 - **trail** (`trails` + `trail_stops`) — ordered playlist of locations. This is what players browse and play.
+- **trail group** (`trail_groups`) — optional catalog family for 1–N variant trails (same day product, different packages).
 - **treasure** — optional reward system (not core gameplay)
 
 Rules:
 
-- A location may appear on **at most one** trail (or none).
+- A location may appear on **multiple trails** (needed for shared spine stops across variants). A location may appear at most once per trail.
+- Variant trails share a `trail_group_id` and use `variant_label` / `variant_sort`. Ungrouped trails are standalone catalog cards.
+- `trail_stops.optional` marks skippable stops inside a trail (distinct from `puzzle_chains.optional`, which is Explore “side find”).
+- Progress / purchase keys use **trail (variant) id**, not group id.
 - `ready_to_publish` exists on trails, locations (`puzzle_chains`), and steps. The player catalog is published trails only; unpublished / atlas-only locations stay dashboard-side and players never see them.
-- Trail metadata (description, duration, distance, transport, free/paid, cover image) lives on **trails**, not on locations.
+- Trail metadata (description, duration, distance, transport, free/paid, cover image) lives on **trails**, not on locations. Group title/cover may summarize the family.
 - Never merge trail into chain or replace chain/step with “puzzle”.
 
 ---
@@ -147,12 +151,14 @@ The ONLY place allowed to:
 - treasures[]
 - trails[]
 - trailStops[]
+- trailGroups[]
 
 - selectedRegionId
 - selectedChainId
 - selectedStepId
 - selectedTreasureId
 - selectedTrailId
+- selectedTrailGroupId
 
 ### FORBIDDEN:
 
@@ -168,9 +174,9 @@ Region view sections:
 
 - Locations (add location)
 - Treasures (add treasure)
-- Trails (add trail)
+- Trails (add trail / trail group)
 
-When a trail is selected: edit trail details + reorder stops (locations).
+When a trail is selected: edit trail details (including group/variant) + reorder stops (locations); mark stops optional.
 
 When a location is selected: edit location + reorder steps.
 
