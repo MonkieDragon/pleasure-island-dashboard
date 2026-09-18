@@ -16,6 +16,7 @@ import {
 
   type JigsawConfig,
 } from "@/types/database";
+import { isAnswerToken, sanitizeAnswerToken } from "@/lib/answerToken";
 import {
   Box,
   Button,
@@ -92,6 +93,28 @@ function parseOptionalNumber(input: string): number | null {
 
 /** Matches numeric answers for question steps (integers/decimals, optional leading minus). */
 const NUMERIC_ANSWER_PATTERN = /^-?\d+(\.\d+)?$/;
+
+function interactiveUsesTextAnswerToken(draft: Draft): boolean {
+  if (draft.type !== "interactive") return false;
+  const cfg = draft.interactiveConfig;
+  if (cfg.subtype !== "camera_overlay" && cfg.subtype !== "code_wheel") {
+    return false;
+  }
+  return cfg.answerInputMode !== "number";
+}
+
+function interactiveUsesNumberAnswer(draft: Draft): boolean {
+  if (draft.type !== "interactive") return false;
+  const cfg = draft.interactiveConfig;
+  if (cfg.subtype !== "camera_overlay" && cfg.subtype !== "code_wheel") {
+    return false;
+  }
+  return cfg.answerInputMode === "number";
+}
+
+function usesTextAnswerToken(draft: Draft): boolean {
+  return draft.type === "text" || interactiveUsesTextAnswerToken(draft);
+}
 
 const DEFAULT_INTERACTIVE_CONFIG: CameraOverlayConfig = {
   subtype: "camera_overlay",
@@ -773,6 +796,9 @@ export default function SingleStepEditor({
     }
     if (draft.type === "text") {
       if (a === "") return "Question steps need an answer.";
+      if (!isAnswerToken(a)) {
+        return "Text answers must be one word — letters and numbers only (no spaces or punctuation).";
+      }
       if (NUMERIC_ANSWER_PATTERN.test(a)) {
         return 'This answer looks numeric — enable "Number" so the app uses the numeric keyboard and validates correctly.';
       }
@@ -800,6 +826,13 @@ export default function SingleStepEditor({
             saved.subtype === "camera_overlay" ? saved.overlayImagePath : "";
           if (!overlayPath) return "Camera overlay needs an overlay image.";
           if (a === "") return "Camera overlay needs an answer.";
+          if (cfg.answerInputMode === "number") {
+            if (!NUMERIC_ANSWER_PATTERN.test(a)) {
+              return "Answer must be a valid number.";
+            }
+          } else if (!isAnswerToken(a)) {
+            return "Text answers must be one word — letters and numbers only (no spaces or punctuation).";
+          }
           break;
         }
         case "symbol_codex":
@@ -809,6 +842,13 @@ export default function SingleStepEditor({
           break;
         case "code_wheel":
           if (a === "") return "Code wheel needs an answer (the decoded word).";
+          if (cfg.answerInputMode === "number") {
+            if (!NUMERIC_ANSWER_PATTERN.test(a)) {
+              return "Answer must be a valid number.";
+            }
+          } else if (!isAnswerToken(a)) {
+            return "Text answers must be one word — letters and numbers only (no spaces or punctuation).";
+          }
           break;
         case "jigsaw": {
           const saved = parseInteractiveConfig(step?.config);
@@ -974,20 +1014,35 @@ export default function SingleStepEditor({
                 fullWidth
                 error={
                   !!answerError &&
-                  (isQuestion || draft.type === "qr" || draft.type === "multiple_choice")
+                  (isQuestion ||
+                    draft.type === "qr" ||
+                    draft.type === "multiple_choice" ||
+                    interactiveUsesTextAnswerToken(draft) ||
+                    interactiveUsesNumberAnswer(draft))
                 }
               >
                 <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
                   <TextField
                     label={draft.type === "qr" ? "QR payload" : "Answer"}
                     value={draft.answerText}
-                    onChange={(e) => setDraft({ answerText: e.target.value })}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const next = usesTextAnswerToken(draft)
+                        ? sanitizeAnswerToken(raw)
+                        : raw;
+                      setDraft({ answerText: next });
+                    }}
                     placeholder={
-                      draft.type === "number"
+                      draft.type === "number" || interactiveUsesNumberAnswer(draft)
                         ? "e.g. 42"
                         : draft.type === "qr"
                           ? "QR payload / code"
-                          : "answer text"
+                          : "one word"
+                    }
+                    helperText={
+                      usesTextAnswerToken(draft)
+                        ? "One word — letters and numbers only."
+                        : undefined
                     }
                     size="small"
                     fullWidth
@@ -995,7 +1050,11 @@ export default function SingleStepEditor({
                     {...mobileInputProps}
                     error={
                       !!answerError &&
-                      (isQuestion || draft.type === "qr" || draft.type === "multiple_choice")
+                      (isQuestion ||
+                        draft.type === "qr" ||
+                        draft.type === "multiple_choice" ||
+                        interactiveUsesTextAnswerToken(draft) ||
+                        interactiveUsesNumberAnswer(draft))
                     }
                   />
                   {(isQuestion ||
@@ -1039,9 +1098,13 @@ export default function SingleStepEditor({
                     />
                   )}
                 </Box>
-                {!!answerError && (isQuestion || draft.type === "qr") && (
-                  <FormHelperText>{answerError}</FormHelperText>
-                )}
+                {!!answerError &&
+                  (isQuestion ||
+                    draft.type === "qr" ||
+                    interactiveUsesTextAnswerToken(draft) ||
+                    interactiveUsesNumberAnswer(draft)) && (
+                    <FormHelperText>{answerError}</FormHelperText>
+                  )}
               </FormControl>
             )}
 
