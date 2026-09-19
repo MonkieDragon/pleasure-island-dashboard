@@ -27,7 +27,6 @@ import {
   PuzzleStep,
   Region,
   Trail,
-  TrailGroup,
   TrailStop,
   Treasure,
   parseStepHint,
@@ -51,6 +50,7 @@ type NewChainDraft = {
   lat: string;
   lng: string;
   optional: boolean;
+  exploreVisible: boolean;
   placeType: PlaceType;
 };
 
@@ -59,6 +59,7 @@ const emptyNewChainDraft = (): NewChainDraft => ({
   lat: "",
   lng: "",
   optional: true,
+  exploreVisible: true,
   placeType: "other",
 });
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
@@ -193,7 +194,6 @@ export default function Dashboard() {
   const [treasures, setTreasures] = useState<Treasure[]>([]);
   const [trails, setTrails] = useState<Trail[]>([]);
   const [trailStops, setTrailStops] = useState<TrailStop[]>([]);
-  const [trailGroups, setTrailGroups] = useState<TrailGroup[]>([]);
 
   const [selectedCountryId, setSelectedCountryId] = useState<string | null>(
     null,
@@ -243,12 +243,6 @@ export default function Dashboard() {
     if (isAdmin || editorRegionIds === null) return trails;
     return trails.filter((t) => editorRegionIds.has(t.region_id));
   }, [accessOk, isAdmin, editorRegionIds, trails]);
-
-  const visibleTrailGroups = useMemo(() => {
-    if (!accessOk) return [];
-    if (isAdmin || editorRegionIds === null) return trailGroups;
-    return trailGroups.filter((g) => editorRegionIds.has(g.region_id));
-  }, [accessOk, isAdmin, editorRegionIds, trailGroups]);
 
   const reloadAdminData = useCallback(async () => {
     const [pr, gr] = await Promise.all([
@@ -412,7 +406,7 @@ export default function Dashboard() {
   }, [accessOk]);
 
   // ----------------------------
-  // LOAD TRAILS + TRAIL GROUPS (once)
+  // LOAD TRAILS (once)
   // ----------------------------
   useEffect(() => {
     if (!accessOk) return;
@@ -420,10 +414,6 @@ export default function Dashboard() {
       .from("trails")
       .select("*")
       .then(({ data }) => setTrails((data || []) as Trail[]));
-    supabase
-      .from("trail_groups")
-      .select("*")
-      .then(({ data }) => setTrailGroups((data || []) as TrailGroup[]));
   }, [accessOk]);
 
   // ----------------------------
@@ -1376,6 +1366,7 @@ export default function Dashboard() {
     latitude: number;
     longitude: number;
     optional: boolean;
+    exploreVisible: boolean;
     placeType: PlaceType;
   }) => {
     const { data, error } = await supabase
@@ -1387,6 +1378,7 @@ export default function Dashboard() {
         longitude: input.longitude,
         ready_to_publish: false,
         optional: input.optional,
+        explore_visible: input.exploreVisible,
         place_type: input.placeType,
       })
       .select()
@@ -1432,6 +1424,22 @@ export default function Dashboard() {
     );
   };
 
+  const setChainExploreVisible = async (
+    chainId: string,
+    exploreVisible: boolean,
+  ) => {
+    const { error } = await supabase
+      .from("puzzle_chains")
+      .update({ explore_visible: exploreVisible })
+      .eq("id", chainId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setChains((prev) =>
+      prev.map((c) =>
+        c.id === chainId ? { ...c, explore_visible: exploreVisible } : c,
+      ),
+    );
+  };
+
   const setChainPlaceType = async (chainId: string, placeType: PlaceType) => {
     const { error } = await supabase
       .from("puzzle_chains")
@@ -1451,9 +1459,6 @@ export default function Dashboard() {
       distanceKm: string;
       transportMode: "" | "walk" | "scooter";
       isFree: boolean;
-      trailGroupId: string | null;
-      variantLabel: string;
-      variantSort: string;
     },
   ) => {
     const durationRaw = metadata.durationMinutes.trim();
@@ -1464,16 +1469,6 @@ export default function Dashboard() {
       distanceRaw === "" ? null : Math.max(0, Number(distanceRaw) || 0);
     const transport_mode =
       metadata.transportMode === "scooter" ? "scooter" : "walk";
-    const variant_sort_raw = metadata.variantSort.trim();
-    const variant_sort =
-      variant_sort_raw === ""
-        ? 0
-        : Math.max(0, parseInt(variant_sort_raw, 10) || 0);
-    const trail_group_id = metadata.trailGroupId;
-    const variant_label =
-      trail_group_id == null
-        ? null
-        : metadata.variantLabel.trim() || null;
 
     const { error } = await supabase
       .from("trails")
@@ -1483,9 +1478,6 @@ export default function Dashboard() {
         distance_km,
         transport_mode,
         is_free: metadata.isFree,
-        trail_group_id,
-        variant_label,
-        variant_sort,
       })
       .eq("id", trailId);
     if (error) throw new Error(formatSupabaseError(error));
@@ -1500,9 +1492,6 @@ export default function Dashboard() {
               distance_km,
               transport_mode,
               is_free: metadata.isFree,
-              trail_group_id,
-              variant_label,
-              variant_sort,
             }
           : t,
       ),
@@ -1536,18 +1525,9 @@ export default function Dashboard() {
   const createTrail = async (input: {
     title: string;
     regionId: string;
-    trailGroupId?: string | null;
-    variantLabel?: string | null;
-    variantSort?: number;
   }) => {
     const title = input.title.trim();
     if (!title) throw new Error("Title is required.");
-    const trail_group_id = input.trailGroupId ?? null;
-    const variant_label =
-      trail_group_id == null
-        ? null
-        : (input.variantLabel?.trim() || "Classic");
-    const variant_sort = input.variantSort ?? 0;
     const { data, error } = await supabase
       .from("trails")
       .insert({
@@ -1556,9 +1536,6 @@ export default function Dashboard() {
         transport_mode: "walk",
         is_free: true,
         ready_to_publish: false,
-        trail_group_id,
-        variant_label,
-        variant_sort,
       })
       .select("*")
       .single();
@@ -1571,54 +1548,6 @@ export default function Dashboard() {
     setSelectedStepId(null);
     setSelectedTreasureId(null);
     setSteps([]);
-  };
-
-  const createTrailGroup = async (input: {
-    title: string;
-    regionId: string;
-  }) => {
-    const title = input.title.trim();
-    if (!title) throw new Error("Title is required.");
-    const regionGroups = trailGroups.filter((g) => g.region_id === input.regionId);
-    const maxSort = regionGroups.reduce((m, g) => Math.max(m, g.sort_index), -1);
-    const { data: groupData, error: groupError } = await supabase
-      .from("trail_groups")
-      .insert({
-        title,
-        region_id: input.regionId,
-        sort_index: maxSort + 1,
-      })
-      .select("*")
-      .single();
-    if (groupError) throw new Error(formatSupabaseError(groupError));
-    const group = groupData as TrailGroup;
-    setTrailGroups((prev) => [...prev, group]);
-    await createTrail({
-      title,
-      regionId: input.regionId,
-      trailGroupId: group.id,
-      variantLabel: "Classic",
-      variantSort: 0,
-    });
-  };
-
-  const createTrailVariant = async (input: {
-    groupId: string;
-    variantLabel: string;
-  }) => {
-    const group = trailGroups.find((g) => g.id === input.groupId) || null;
-    if (!group) throw new Error("Trail group not found.");
-    const label = input.variantLabel.trim();
-    if (!label) throw new Error("Variant label is required.");
-    const siblings = trails.filter((t) => t.trail_group_id === group.id);
-    const maxSort = siblings.reduce((m, t) => Math.max(m, t.variant_sort ?? 0), -1);
-    await createTrail({
-      title: `${group.title} · ${label}`,
-      regionId: group.region_id,
-      trailGroupId: group.id,
-      variantLabel: label,
-      variantSort: maxSort + 1,
-    });
   };
 
   const renameTrail = async (trailId: string, title: string) => {
@@ -2091,7 +2020,6 @@ export default function Dashboard() {
       steps={steps}
       treasures={treasures}
       trails={visibleTrails}
-      trailGroups={visibleTrailGroups}
       trailStops={trailStops}
       selectedRegionId={selectedRegionId}
       selectedChainId={selectedChainId}
@@ -2124,8 +2052,6 @@ export default function Dashboard() {
       onCreateRegion={createRegion}
       onCreateChain={createChain}
       onCreateTrail={createTrail}
-      onCreateTrailGroup={createTrailGroup}
-      onCreateTrailVariant={createTrailVariant}
       onSetRegionReadyToPublish={setRegionReadyToPublish}
       onSetChainReadyToPublish={setChainReadyToPublish}
       onSetTrailReadyToPublish={setTrailReadyToPublish}
@@ -2172,6 +2098,7 @@ export default function Dashboard() {
       onRenameChain={renameChain}
       onRenameTrail={renameTrail}
       onSetChainOptional={setChainOptional}
+      onSetChainExploreVisible={setChainExploreVisible}
       onSetChainPlaceType={setChainPlaceType}
       onUpdateTrailMetadata={updateTrailMetadata}
       onEstimateTrailRoute={estimateTrailRouteStats}

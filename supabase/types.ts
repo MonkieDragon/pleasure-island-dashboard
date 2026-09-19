@@ -96,6 +96,7 @@ export type Database = {
       puzzle_chains: {
         Row: {
           created_at: string | null
+          explore_visible: boolean
           id: string
           image_path: string | null
           latitude: number
@@ -108,6 +109,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          explore_visible?: boolean
           id?: string
           image_path?: string | null
           latitude: number
@@ -120,6 +122,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          explore_visible?: boolean
           id?: string
           image_path?: string | null
           latitude?: number
@@ -238,44 +241,6 @@ export type Database = {
         }
         Relationships: []
       }
-      trail_groups: {
-        Row: {
-          created_at: string
-          description: string | null
-          id: string
-          image_path: string | null
-          region_id: string
-          sort_index: number
-          title: string
-        }
-        Insert: {
-          created_at?: string
-          description?: string | null
-          id?: string
-          image_path?: string | null
-          region_id: string
-          sort_index?: number
-          title: string
-        }
-        Update: {
-          created_at?: string
-          description?: string | null
-          id?: string
-          image_path?: string | null
-          region_id?: string
-          sort_index?: number
-          title?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "trail_groups_region_id_fkey"
-            columns: ["region_id"]
-            isOneToOne: false
-            referencedRelation: "regions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       trail_stops: {
         Row: {
           chain_id: string
@@ -327,10 +292,7 @@ export type Database = {
           ready_to_publish: boolean
           region_id: string
           title: string
-          trail_group_id: string | null
           transport_mode: string | null
-          variant_label: string | null
-          variant_sort: number
         }
         Insert: {
           created_at?: string
@@ -343,10 +305,7 @@ export type Database = {
           ready_to_publish?: boolean
           region_id: string
           title: string
-          trail_group_id?: string | null
           transport_mode?: string | null
-          variant_label?: string | null
-          variant_sort?: number
         }
         Update: {
           created_at?: string
@@ -359,10 +318,7 @@ export type Database = {
           ready_to_publish?: boolean
           region_id?: string
           title?: string
-          trail_group_id?: string | null
           transport_mode?: string | null
-          variant_label?: string | null
-          variant_sort?: number
         }
         Relationships: [
           {
@@ -370,13 +326,6 @@ export type Database = {
             columns: ["region_id"]
             isOneToOne: false
             referencedRelation: "regions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "trails_trail_group_id_fkey"
-            columns: ["trail_group_id"]
-            isOneToOne: false
-            referencedRelation: "trail_groups"
             referencedColumns: ["id"]
           },
         ]

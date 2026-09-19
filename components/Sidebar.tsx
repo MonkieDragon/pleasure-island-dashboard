@@ -8,7 +8,6 @@ import {
   PuzzleStep,
   Region,
   Trail,
-  TrailGroup,
   TrailStop,
   Treasure,
   PLACE_TYPES,
@@ -81,7 +80,6 @@ type Props = {
   steps: PuzzleStep[];
   treasures: Treasure[];
   trails: Trail[];
-  trailGroups: TrailGroup[];
   trailStops: TrailStop[];
   selectedRegionId: string | null;
   selectedChainId: string | null;
@@ -110,22 +108,12 @@ type Props = {
     latitude: number;
     longitude: number;
     optional: boolean;
+    exploreVisible: boolean;
     placeType: PlaceType;
   }) => Promise<void>;
   onCreateTrail: (input: {
     title: string;
     regionId: string;
-    trailGroupId?: string | null;
-    variantLabel?: string | null;
-    variantSort?: number;
-  }) => Promise<void>;
-  onCreateTrailGroup: (input: {
-    title: string;
-    regionId: string;
-  }) => Promise<void>;
-  onCreateTrailVariant: (input: {
-    groupId: string;
-    variantLabel: string;
   }) => Promise<void>;
   onCreateStep: (input: { chainId: string }) => Promise<void>;
   onSetRegionReadyToPublish: (id: string, ready: boolean) => Promise<void>;
@@ -141,6 +129,7 @@ type Props = {
     lat: string;
     lng: string;
     optional: boolean;
+    exploreVisible: boolean;
     placeType: PlaceType;
   };
   onNewChainDraftChange: (next: {
@@ -148,6 +137,7 @@ type Props = {
     lat: string;
     lng: string;
     optional: boolean;
+    exploreVisible: boolean;
     placeType: PlaceType;
   }) => void;
   onStartNewChainPlacement: () => void;
@@ -193,6 +183,10 @@ type Props = {
   onRenameChain: (chainId: string, title: string) => Promise<void>;
   onRenameTrail: (trailId: string, title: string) => Promise<void>;
   onSetChainOptional: (chainId: string, optional: boolean) => Promise<void>;
+  onSetChainExploreVisible: (
+    chainId: string,
+    exploreVisible: boolean,
+  ) => Promise<void>;
   onSetChainPlaceType: (chainId: string, placeType: PlaceType) => Promise<void>;
   onUpdateTrailMetadata: (
     trailId: string,
@@ -202,9 +196,6 @@ type Props = {
       distanceKm: string;
       transportMode: "" | "walk" | "scooter";
       isFree: boolean;
-      trailGroupId: string | null;
-      variantLabel: string;
-      variantSort: string;
     },
   ) => Promise<void>;
   onEstimateTrailRoute: (
@@ -580,7 +571,6 @@ export default function Sidebar({
   steps,
   treasures,
   trails,
-  trailGroups,
   trailStops,
   selectedRegionId,
   selectedChainId,
@@ -601,8 +591,6 @@ export default function Sidebar({
   onCreateRegion,
   onCreateChain,
   onCreateTrail,
-  onCreateTrailGroup,
-  onCreateTrailVariant,
   onSetRegionReadyToPublish,
   onSetChainReadyToPublish,
   onSetTrailReadyToPublish,
@@ -642,6 +630,7 @@ export default function Sidebar({
   onRenameChain,
   onRenameTrail,
   onSetChainOptional,
+  onSetChainExploreVisible,
   onSetChainPlaceType,
   onUpdateTrailMetadata,
   onEstimateTrailRoute,
@@ -679,14 +668,6 @@ export default function Sidebar({
   const regionTrails = selectedRegionId
     ? trails.filter((t) => t.region_id === selectedRegionId)
     : [];
-
-  const regionTrailGroups = useMemo(() => {
-    if (!selectedRegionId) return [];
-    return trailGroups
-      .filter((g) => g.region_id === selectedRegionId)
-      .slice()
-      .sort((a, b) => a.sort_index - b.sort_index || a.title.localeCompare(b.title));
-  }, [trailGroups, selectedRegionId]);
 
   const sortedTrailStops = useMemo(() => {
     if (!selectedTrailId) return [];
@@ -742,6 +723,7 @@ export default function Sidebar({
   const chainLat = newChainDraft.lat;
   const chainLng = newChainDraft.lng;
   const chainOptional = newChainDraft.optional;
+  const chainExploreVisible = newChainDraft.exploreVisible !== false;
   const chainPlaceType = isPlaceType(newChainDraft.placeType)
     ? newChainDraft.placeType
     : "other";
@@ -751,16 +733,12 @@ export default function Sidebar({
     lat: "",
     lng: "",
     optional: true as boolean,
+    exploreVisible: true as boolean,
     placeType: "other" as PlaceType,
   });
   const [createLocationMode, setCreateLocationMode] = useState(false);
   const [createTrailMode, setCreateTrailMode] = useState(false);
-  const [createTrailGroupMode, setCreateTrailGroupMode] = useState(false);
-  const [createVariantGroupId, setCreateVariantGroupId] = useState<string | null>(
-    null,
-  );
   const [newTrailTitle, setNewTrailTitle] = useState("");
-  const [newVariantLabel, setNewVariantLabel] = useState("");
   const [addStopChainId, setAddStopChainId] = useState("");
 
   const treasureLat = newTreasureDraft.lat;
@@ -973,6 +951,7 @@ export default function Sidebar({
         latitude,
         longitude,
         optional: chainOptional,
+        exploreVisible: chainExploreVisible,
         placeType: chainPlaceType,
       });
       onNewChainDraftChange(emptyChainDraft());
@@ -1098,49 +1077,6 @@ export default function Sidebar({
     }
   };
 
-  const submitTrailGroup = async () => {
-    if (!selectedRegionId) return;
-    const title = newTrailTitle.trim();
-    if (!title) {
-      setCreateError("Title is required.");
-      return;
-    }
-    setCreateError(null);
-    setCreateBusy(true);
-    try {
-      await onCreateTrailGroup({ title, regionId: selectedRegionId });
-      setNewTrailTitle("");
-      setCreateTrailGroupMode(false);
-    } catch (e) {
-      setCreateError(formatSupabaseError(e));
-    } finally {
-      setCreateBusy(false);
-    }
-  };
-
-  const submitTrailVariant = async () => {
-    if (!createVariantGroupId) return;
-    const label = newVariantLabel.trim();
-    if (!label) {
-      setCreateError("Variant label is required.");
-      return;
-    }
-    setCreateError(null);
-    setCreateBusy(true);
-    try {
-      await onCreateTrailVariant({
-        groupId: createVariantGroupId,
-        variantLabel: label,
-      });
-      setNewVariantLabel("");
-      setCreateVariantGroupId(null);
-    } catch (e) {
-      setCreateError(formatSupabaseError(e));
-    } finally {
-      setCreateBusy(false);
-    }
-  };
-
   const confirmDeleteTrail = async () => {
     if (!selectedTrailId) return;
     setCreateError(null);
@@ -1197,6 +1133,18 @@ export default function Sidebar({
     }
   };
 
+  const setExploreVisible = async (exploreVisible: boolean) => {
+    if (!selectedChain) return;
+    setFlagBusy(true);
+    try {
+      await onSetChainExploreVisible(selectedChain.id, exploreVisible);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setFlagBusy(false);
+    }
+  };
+
   const setPlaceType = async (placeType: PlaceType) => {
     if (!selectedChain) return;
     setFlagBusy(true);
@@ -1215,6 +1163,7 @@ export default function Sidebar({
     lat: string;
     lng: string;
     optional: boolean;
+    exploreVisible: boolean;
     placeType: PlaceType;
     placementActive: boolean;
     onChange: (next: {
@@ -1222,6 +1171,7 @@ export default function Sidebar({
       lat: string;
       lng: string;
       optional: boolean;
+      exploreVisible: boolean;
       placeType: PlaceType;
     }) => void;
     onPickOnMap: () => void;
@@ -1234,6 +1184,7 @@ export default function Sidebar({
       lat: input.lat,
       lng: input.lng,
       optional: input.optional,
+      exploreVisible: input.exploreVisible,
       placeType: input.placeType,
     };
     return (
@@ -1270,6 +1221,20 @@ export default function Sidebar({
             inputMode="decimal"
           />
         </Box>
+
+        <FormControlLabel
+          sx={{ mt: 0.5, ml: 0 }}
+          control={
+            <Checkbox
+              size="small"
+              checked={input.exploreVisible}
+              onChange={(e) =>
+                input.onChange({ ...draft, exploreVisible: e.target.checked })
+              }
+            />
+          }
+          label="Show in Explore"
+        />
 
         <FormControlLabel
           sx={{ mt: 0.5, ml: 0 }}
@@ -1561,6 +1526,7 @@ export default function Sidebar({
                 lat: chainLat,
                 lng: chainLng,
                 optional: chainOptional,
+                exploreVisible: chainExploreVisible,
                 placeType: chainPlaceType,
                 placementActive: newChainPlacementActive,
                 onChange: onNewChainDraftChange,
@@ -1579,24 +1545,19 @@ export default function Sidebar({
                   !Number.isFinite(Number(chainLat.trim())) ||
                   !Number.isFinite(Number(chainLng.trim())),
               })
-            ) : createTrailMode || createTrailGroupMode ? (
+            ) : createTrailMode ? (
               <Box sx={{ px: 1 }}>
                 <Typography variant="overline" sx={{ color: "text.secondary" }}>
-                  {createTrailGroupMode ? "Create trail group" : "Create trail"}
+                  Create trail
                 </Typography>
                 <TextField
-                  label={createTrailGroupMode ? "Group title" : "Title"}
+                  label="Title"
                   value={newTrailTitle}
                   onChange={(e) => setNewTrailTitle(e.target.value)}
                   fullWidth
                   autoFocus
                   size="small"
                   sx={{ mt: 1 }}
-                  helperText={
-                    createTrailGroupMode
-                      ? "Creates a family with a Classic variant"
-                      : undefined
-                  }
                 />
                 <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
                   <Button
@@ -1607,7 +1568,6 @@ export default function Sidebar({
                       setCreateError(null);
                       setNewTrailTitle("");
                       setCreateTrailMode(false);
-                      setCreateTrailGroupMode(false);
                     }}
                   >
                     Cancel
@@ -1616,54 +1576,7 @@ export default function Sidebar({
                     variant="contained"
                     fullWidth
                     disabled={createBusy || !newTrailTitle.trim()}
-                    onClick={() =>
-                      void (createTrailGroupMode
-                        ? submitTrailGroup()
-                        : submitTrail())
-                    }
-                  >
-                    Create
-                  </Button>
-                </Box>
-                {createError && (
-                  <Typography variant="body2" color="error" sx={{ mt: 1 }}>
-                    {createError}
-                  </Typography>
-                )}
-              </Box>
-            ) : createVariantGroupId ? (
-              <Box sx={{ px: 1 }}>
-                <Typography variant="overline" sx={{ color: "text.secondary" }}>
-                  Add variant
-                </Typography>
-                <TextField
-                  label="Variant label"
-                  value={newVariantLabel}
-                  onChange={(e) => setNewVariantLabel(e.target.value)}
-                  fullWidth
-                  autoFocus
-                  size="small"
-                  sx={{ mt: 1 }}
-                  placeholder="e.g. Kew Mae Pan"
-                />
-                <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    disabled={createBusy}
-                    onClick={() => {
-                      setCreateError(null);
-                      setNewVariantLabel("");
-                      setCreateVariantGroupId(null);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="contained"
-                    fullWidth
-                    disabled={createBusy || !newVariantLabel.trim()}
-                    onClick={() => void submitTrailVariant()}
+                    onClick={() => void submitTrail()}
                   >
                     Create
                   </Button>
@@ -1928,123 +1841,47 @@ export default function Sidebar({
                 >
                   <Stack spacing={1}>
                     <List dense sx={{ py: 0 }}>
-                      {regionTrailGroups.map((group) => {
-                        const variants = regionTrails
-                          .filter((t) => t.trail_group_id === group.id)
-                          .slice()
-                          .sort(
-                            (a, b) =>
-                              (a.variant_sort ?? 0) - (b.variant_sort ?? 0) ||
-                              a.title.localeCompare(b.title),
-                          );
-                        return (
-                          <Box key={group.id} sx={{ mb: 1 }}>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{ px: 1, display: "block" }}
-                            >
-                              {group.title}
-                            </Typography>
-                            {variants.map((t) => (
-                              <ListItemButton
-                                key={t.id}
-                                selected={selectedTrailId === t.id}
-                                onClick={() => onSelectTrail(t.id)}
-                                onMouseEnter={() =>
-                                  onHoverChange({ kind: "trail", id: t.id })
-                                }
-                                onMouseLeave={() => onHoverChange(null)}
+                      {regionTrails.map((t) => (
+                        <ListItemButton
+                          key={t.id}
+                          selected={selectedTrailId === t.id}
+                          onClick={() => onSelectTrail(t.id)}
+                          onMouseEnter={() =>
+                            onHoverChange({ kind: "trail", id: t.id })
+                          }
+                          onMouseLeave={() => onHoverChange(null)}
+                          sx={{
+                            minWidth: 0,
+                            opacity:
+                              t.ready_to_publish &&
+                              selectedRegion?.ready_to_publish
+                                ? 1
+                                : 0.72,
+                          }}
+                        >
+                          <ListItemText
+                            primary={
+                              <Typography
+                                noWrap
                                 sx={{
-                                  minWidth: 0,
-                                  pl: 2,
-                                  opacity:
-                                    t.ready_to_publish &&
-                                    selectedRegion?.ready_to_publish
-                                      ? 1
-                                      : 0.72,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
                                 }}
                               >
-                                <ListItemText
-                                  primary={
-                                    <Typography
-                                      noWrap
-                                      sx={{
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                      }}
-                                    >
-                                      {t.variant_label || t.title}
-                                    </Typography>
-                                  }
-                                  sx={{ minWidth: 0, mr: 1 }}
-                                />
-                                <ReadyToPublishControl
-                                  ready={t.ready_to_publish}
-                                  entityLabel="trail"
-                                  onChange={(ready) =>
-                                    onSetTrailReadyToPublish(t.id, ready)
-                                  }
-                                />
-                              </ListItemButton>
-                            ))}
-                            <Button
-                              size="small"
-                              sx={{ ml: 1 }}
-                              onClick={() => {
-                                setCreateError(null);
-                                setNewVariantLabel("");
-                                setCreateVariantGroupId(group.id);
-                              }}
-                            >
-                              Add variant
-                            </Button>
-                          </Box>
-                        );
-                      })}
-                      {regionTrails
-                        .filter((t) => !t.trail_group_id)
-                        .map((t) => (
-                          <ListItemButton
-                            key={t.id}
-                            selected={selectedTrailId === t.id}
-                            onClick={() => onSelectTrail(t.id)}
-                            onMouseEnter={() =>
-                              onHoverChange({ kind: "trail", id: t.id })
+                                {t.title}
+                              </Typography>
                             }
-                            onMouseLeave={() => onHoverChange(null)}
-                            sx={{
-                              minWidth: 0,
-                              opacity:
-                                t.ready_to_publish &&
-                                selectedRegion?.ready_to_publish
-                                  ? 1
-                                  : 0.72,
-                            }}
-                          >
-                            <ListItemText
-                              primary={
-                                <Typography
-                                  noWrap
-                                  sx={{
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
-                                  {t.title}
-                                </Typography>
-                              }
-                              sx={{ minWidth: 0, mr: 1 }}
-                            />
-                            <ReadyToPublishControl
-                              ready={t.ready_to_publish}
-                              entityLabel="trail"
-                              onChange={(ready) =>
-                                onSetTrailReadyToPublish(t.id, ready)
-                              }
-                            />
-                          </ListItemButton>
-                        ))}
+                            sx={{ minWidth: 0, mr: 1 }}
+                          />
+                          <ReadyToPublishControl
+                            ready={t.ready_to_publish}
+                            entityLabel="trail"
+                            onChange={(ready) =>
+                              onSetTrailReadyToPublish(t.id, ready)
+                            }
+                          />
+                        </ListItemButton>
+                      ))}
                     </List>
                     {regionTrails.length === 0 && (
                       <Typography variant="caption" color="text.secondary">
@@ -2063,18 +1900,6 @@ export default function Sidebar({
                       }}
                     >
                       Add trail
-                    </Button>
-                    <Button
-                      fullWidth
-                      size="small"
-                      variant="outlined"
-                      onClick={() => {
-                        setCreateError(null);
-                        setNewTrailTitle("");
-                        setCreateTrailGroupMode(true);
-                      }}
-                    >
-                      Add trail group
                     </Button>
                   </Stack>
                 </EditorAccordion>
@@ -2156,7 +1981,6 @@ export default function Sidebar({
                 {selectedTrail ? (
                   <TrailMetadataEditor
                     trail={selectedTrail}
-                    trailGroups={trailGroups}
                     onSave={async (metadata) => {
                       await onUpdateTrailMetadata(selectedTrail.id, metadata);
                     }}
@@ -2325,6 +2149,19 @@ export default function Sidebar({
                     <Button size="small" variant="outlined" onClick={openRenameDialog}>
                       Rename
                     </Button>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={selectedChain.explore_visible !== false}
+                          disabled={flagBusy}
+                          onChange={(e) =>
+                            void setExploreVisible(e.target.checked)
+                          }
+                        />
+                      }
+                      label="Show in Explore"
+                    />
                     <FormControlLabel
                       control={
                         <Checkbox

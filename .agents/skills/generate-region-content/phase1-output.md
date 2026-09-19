@@ -1,6 +1,6 @@
 # Phase 1 output
 
-Emit a **region trail portfolio** only. No coordinates, step text, answers, or puzzle types.
+Emit a **region adventure portfolio** only. No coordinates, step text, answers, or puzzle types.
 
 ## Markdown shape (default for review)
 
@@ -8,28 +8,28 @@ Emit a **region trail portfolio** only. No coordinates, step text, answers, or p
 # Phase 1 portfolio — <Region Name>
 
 **Status:** draft
-**Sources consulted:** (packages / itineraries; optional Reddit/blogs)
+**Sources consulted:** (place clusters / geography; optional Reddit/blogs)
 **Assumptions:** (defaults for duration, pace, visitor type)
 
 ## Summary
-- N walk trails, M scooter trails
-- Must-sees covered once; list any notable omissions and why
+- N walk adventures, M scooter adventures
+- Must-sees covered; note shared spines across variants; list notable omissions and why
 
 ## Trails
 
 ### 1. <Trail title>
 - **Mode:** walk | scooter
 - **Duration (rough):** e.g. half day / 3–4 hours
-- **Description:** 1–2 sentences
+- **Description:** 1–2 sentences (puzzle adventure framing, not a tour leaflet)
 - **Locations (ordered):**
   1. <Name>
   2. <Name>
-- **Why this day-shape:** (package signal / geography)
+- **Why this adventure:** (geography / must-see cluster)
 - **Open questions:** (optional)
 
 ### 2. …
 
-## Rejected day shapes
+## Rejected shapes
 | Candidate | Reason |
 | --- | --- |
 | … | tour-only / unsafe scooter / etc. |
@@ -38,7 +38,7 @@ Emit a **region trail portfolio** only. No coordinates, step text, answers, or p
 - <Place> — why not fitted yet
 
 ## Overlap check
-Confirm no location name appears on more than one trail.
+List locations shared across trails (expected for variant spines). Flag accidental duplicates within a single trail.
 ```
 
 ## Optional JSON (same content)
@@ -56,7 +56,7 @@ Confirm no location name appears on more than one trail.
       "locations": ["string"]
     }
   ],
-  "rejected_day_shapes": [{ "name": "string", "reason": "string" }],
+  "rejected_shapes": [{ "name": "string", "reason": "string" }],
   "unassigned_maybes": [{ "name": "string", "note": "string" }]
 }
 ```

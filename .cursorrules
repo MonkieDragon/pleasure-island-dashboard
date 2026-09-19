@@ -28,7 +28,7 @@ Do NOT rename core domain entities:
 - trail = ordered playlist of locations; what players browse and play
 - treasure = optional reward system (not core gameplay)
 
-Never merge or reinterpret these concepts. A location may appear on multiple trails (shared spine across variants) but at most once per trail.
+Never merge or reinterpret these concepts. A location may appear on multiple trails (shared spine) but at most once per trail.
 
 ---
 

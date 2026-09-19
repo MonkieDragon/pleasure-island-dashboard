@@ -31,11 +31,13 @@ It is a **game authoring and operational tool** used to design physical-location
 
 ## GAME CONCEPT
 
-Players use a mobile app to:
+This is a **game for exploring real places** through puzzles — not a day-trip itinerary app.
+
+Players:
 
 - select a region
-- select a **trail** (ordered playlist of locations)
-- travel to each location in order
+- **pick an adventure (trail)** and follow ordered puzzle locations, **or**
+- **Explore** the map and discover puzzle pins wherever they go
 - complete ordered steps (clues) at each location
 - interact with real-world objects (QR codes, plaques, landmarks)
 
@@ -43,13 +45,15 @@ Players use a mobile app to:
 
 ## CORE GAME LOOP
 
-1. Player selects a region (e.g. Cebu, Siquijor)
-2. Player selects a trail
-3. For each location on the trail (in order):
+1. Player selects a region (e.g. Chiang Mai, Cebu)
+2. Player either:
+   - selects a **trail** (curated puzzle adventure), or
+   - opens **Explore** and picks a published map pin
+3. On a trail, for each location (in order):
    - Player travels to that location
    - Player completes that location’s ordered steps
 4. Steps may involve:
-   - reading instructions
+   - reading instructions / narrative
    - scanning QR codes
    - physical observation tasks
    - answering questions
@@ -61,13 +65,14 @@ Players use a mobile app to:
 
 This system is:
 
-> A tool for designing real-world exploration gameplay experiences.
+> A tool for designing real-world **puzzle** exploration experiences.
 
 NOT:
 
 - a CMS
 - a generic map editor
 - a blog/content system
+- a tourist day-trip planner (routes without puzzles)
 
 ---
 
@@ -115,18 +120,17 @@ For generating region / trail / location / step content, follow `.agents/skills/
 - **region** — geographic grouping (island / city area)
 - **chain** (`puzzle_chains`) — a **location**: a real-world map pin with ordered steps. UI says “location”.
 - **step** — ordered gameplay clue inside a location
-- **trail** (`trails` + `trail_stops`) — ordered playlist of locations. This is what players browse and play.
-- **trail group** (`trail_groups`) — optional catalog family for 1–N variant trails (same day product, different packages).
+- **trail** (`trails` + `trail_stops`) — ordered playlist of locations; a curated **puzzle adventure**. This is what players browse and play.
 - **treasure** — optional reward system (not core gameplay)
 
 Rules:
 
-- A location may appear on **multiple trails** (needed for shared spine stops across variants). A location may appear at most once per trail.
-- Variant trails share a `trail_group_id` and use `variant_label` / `variant_sort`. Ungrouped trails are standalone catalog cards.
+- A location may appear on **multiple trails** (shared spine across related adventures). A location may appear at most once per trail.
 - `trail_stops.optional` marks skippable stops inside a trail (distinct from `puzzle_chains.optional`, which is Explore “side find”).
-- Progress / purchase keys use **trail (variant) id**, not group id.
-- `ready_to_publish` exists on trails, locations (`puzzle_chains`), and steps. The player catalog is published trails only; unpublished / atlas-only locations stay dashboard-side and players never see them.
-- Trail metadata (description, duration, distance, transport, free/paid, cover image) lives on **trails**, not on locations. Group title/cover may summarize the family.
+- `puzzle_chains.explore_visible` controls Explore: when true, a published location appears on the Explore map (including locations that are also on trails). When false, the location is **trail-only** (narrative glue / exclusive mystery beats).
+- Progress / purchase keys use **trail id**.
+- `ready_to_publish` exists on trails, locations (`puzzle_chains`), and steps. The player catalog is published trails only; unpublished locations stay dashboard-side.
+- Trail metadata (description, duration, distance, transport, free/paid, cover image) lives on **trails**, not on locations. Frame trails as adventures (puzzle play), not day-trip itineraries.
 - Never merge trail into chain or replace chain/step with “puzzle”.
 
 ---
@@ -151,14 +155,12 @@ The ONLY place allowed to:
 - treasures[]
 - trails[]
 - trailStops[]
-- trailGroups[]
 
 - selectedRegionId
 - selectedChainId
 - selectedStepId
 - selectedTreasureId
 - selectedTrailId
-- selectedTrailGroupId
 
 ### FORBIDDEN:
 
@@ -174,9 +176,9 @@ Region view sections:
 
 - Locations (add location)
 - Treasures (add treasure)
-- Trails (add trail / trail group)
+- Trails (add trail)
 
-When a trail is selected: edit trail details (including group/variant) + reorder stops (locations); mark stops optional.
+When a trail is selected: edit trail details + reorder stops (locations); mark stops optional.
 
 When a location is selected: edit location + reorder steps.
 

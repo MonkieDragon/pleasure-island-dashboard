@@ -2,13 +2,13 @@
 
 Use this when drafting or revising portfolios and puzzles. Update from playtests via `lessons-learned.md`.
 
-## Good trail (day-out)
+## Good trail (adventure)
 
 - Clear theme or geography (not a random pin scatter)
 - Fits in a day or less including travel for the assigned mode
 - Ordered stops make sense on a map (minimal backtracking)
 - Mix of payoff moments; not three near-identical temples in a row unless the trail’s point is a temple circuit
-- Description sets expectations (walk vs scooter, vibe, roughly how long)
+- Description frames a **puzzle adventure** (walk vs scooter, vibe, roughly how long) — not a tour-leaflet itinerary
 
 ## Good location (stop)
 

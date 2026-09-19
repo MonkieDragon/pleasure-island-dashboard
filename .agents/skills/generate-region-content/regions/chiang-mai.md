@@ -2,13 +2,15 @@
 
 Living region memory for `generate-region-content`. Keep in sync with Phase 1 portfolio reviews.
 
+Product framing: **puzzle adventures** (not day-trip packages). Shared map pins stay Explore-visible; trail-only narrative/exclusive locations use `explore_visible = false` when authored.
+
 ## Phase 1 status
 
 `draft`
 
 Allowed values: `not_started` | `draft` | `approved`
 
-## Draft day shapes
+## Draft adventure shapes
 
 ### 1. Old City Icons
 - **Mode:** walk
@@ -45,18 +47,18 @@ Allowed values: `not_started` | `draft` | `approved`
 - **Locations (ordered):** Mae Sa Waterfall → Queen Sirikit Botanic Garden → Mon Jam
 - **Why:** Reddit and scooter guides push Samoeng/Mae Sa as the first “real” ride day; stripped of tour-model animal stops.
 
-### 6. Doi Inthanon (trail group — 3 variants)
+### 6. Doi Inthanon (3 standalone trails)
 - **Mode:** scooter
 - **Duration:** full day
-- **Status in DB:** trail group `Doi Inthanon` with variants Classic / Kew Mae Pan / Pha Dok Siew (unpublished)
+- **Status in DB:** three published trails — `Doi Inthanon · Classic`, `Doi Inthanon · Kew Mae Pan`, `Doi Inthanon · Pha Dok Siew` (shared locations across trails)
 - **Classic (required):** Summit → Ang Ka → Royal Pagodas → Wachirathan  
   **Optional:** Sirithan, Mae Klang Waterfall, Baan Khun Klang (lunch)
 - **Kew Mae Pan (required):** Summit → Ang Ka → Kew Mae Pan → Wachirathan  
   **Optional:** Royal Pagodas (seasonal ridge walk; guide required)
 - **Pha Dok Siew (required):** Royal Pagodas → Pha Dok Siew → Baan Mae Klang Luang → Wachirathan  
   **Optional:** Mae Klang Waterfall
-- **Atlas only (not on these variants):** Mae Ya Waterfall (long detour)
-- **Why:** Tour packages offer 1–3 day shapes; mutually exclusive long hikes are variants; skippable extras are optional stops.
+- **Atlas only (not on these trails):** Mae Ya Waterfall (long detour)
+- **Why:** Tour packages offer 1–3 day shapes; mutually exclusive long hikes are separate trails; skippable extras are optional stops.
 
 ## Approved day shapes
 
