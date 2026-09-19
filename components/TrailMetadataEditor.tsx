@@ -75,6 +75,14 @@ export default function TrailMetadataEditor({
     setEstimateError(null);
   }, [trail.id, draft.transportMode]);
 
+  const base = toDraft(trail);
+  const dirty =
+    draft.description !== base.description ||
+    draft.durationMinutes !== base.durationMinutes ||
+    draft.distanceKm !== base.distanceKm ||
+    draft.transportMode !== base.transportMode ||
+    draft.isFree !== base.isFree;
+
   const transportLabel =
     draft.transportMode === "scooter" ? "scooter" : "walking";
 
@@ -179,6 +187,7 @@ export default function TrailMetadataEditor({
           variant="contained"
           size="small"
           fullWidth
+          disabled={!dirty}
           onClick={() => void onSave(draft)}
         >
           Save trail details
