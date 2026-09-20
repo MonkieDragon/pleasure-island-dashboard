@@ -5,6 +5,7 @@ import {
   Button,
   FormControl,
   FormControlLabel,
+  IconButton,
   InputLabel,
   MenuItem,
   Select,
@@ -13,6 +14,7 @@ import {
   Typography,
 } from "@mui/material";
 import Checkbox from "@mui/material/Checkbox";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 export type TrailMetadataDraft = {
   description: string;
@@ -20,6 +22,9 @@ export type TrailMetadataDraft = {
   distanceKm: string;
   transportMode: "" | "walk" | "scooter";
   isFree: boolean;
+  showTrail: boolean;
+  isLoop: boolean;
+  highlights: string[];
 };
 
 type RouteEstimate = {
@@ -46,6 +51,9 @@ function toDraft(trail: Trail): TrailMetadataDraft {
         ? trail.transport_mode
         : "walk",
     isFree: trail.is_free ?? true,
+    showTrail: trail.show_trail ?? true,
+    isLoop: trail.is_loop ?? false,
+    highlights: Array.isArray(trail.highlights) ? [...trail.highlights] : [],
   };
 }
 
@@ -55,6 +63,7 @@ export default function TrailMetadataEditor({
   onEstimateRoute,
 }: Props) {
   const [draft, setDraft] = useState<TrailMetadataDraft>(() => toDraft(trail));
+  const [newHighlight, setNewHighlight] = useState("");
   const [estimating, setEstimating] = useState(false);
   const [estimate, setEstimate] = useState<RouteEstimate | null>(null);
   const [estimateError, setEstimateError] = useState<string | null>(null);
@@ -68,6 +77,9 @@ export default function TrailMetadataEditor({
     trail.distance_km,
     trail.transport_mode,
     trail.is_free,
+    trail.show_trail,
+    trail.is_loop,
+    trail.highlights,
   ]);
 
   useEffect(() => {
@@ -81,7 +93,10 @@ export default function TrailMetadataEditor({
     draft.durationMinutes !== base.durationMinutes ||
     draft.distanceKm !== base.distanceKm ||
     draft.transportMode !== base.transportMode ||
-    draft.isFree !== base.isFree;
+    draft.isFree !== base.isFree ||
+    draft.showTrail !== base.showTrail ||
+    draft.isLoop !== base.isLoop ||
+    draft.highlights.join("\n") !== base.highlights.join("\n");
 
   const transportLabel =
     draft.transportMode === "scooter" ? "scooter" : "walking";
@@ -99,6 +114,13 @@ export default function TrailMetadataEditor({
     } finally {
       setEstimating(false);
     }
+  };
+
+  const addHighlight = () => {
+    const t = newHighlight.trim();
+    if (!t) return;
+    setDraft((d) => ({ ...d, highlights: [...d.highlights, t] }));
+    setNewHighlight("");
   };
 
   return (
@@ -183,6 +205,93 @@ export default function TrailMetadataEditor({
           }
           label="Free trail"
         />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={draft.showTrail}
+              onChange={(_, checked) =>
+                setDraft((d) => ({ ...d, showTrail: checked }))
+              }
+            />
+          }
+          label="Show route line on map"
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={draft.isLoop}
+              onChange={(_, checked) => setDraft((d) => ({ ...d, isLoop: checked }))}
+            />
+          }
+          label="Loop (returns to start)"
+        />
+
+        <Box>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Highlights
+          </Typography>
+          <Stack spacing={1}>
+            {draft.highlights.map((h, i) => (
+              <Stack
+                key={`${i}-${h.slice(0, 12)}`}
+                direction="row"
+                spacing={0.5}
+                sx={{ alignItems: "flex-start" }}
+              >
+                <TextField
+                  value={h}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setDraft((d) => {
+                      const next = [...d.highlights];
+                      next[i] = value;
+                      return { ...d, highlights: next };
+                    });
+                  }}
+                  size="small"
+                  fullWidth
+                  multiline
+                />
+                <IconButton
+                  size="small"
+                  aria-label="Remove highlight"
+                  onClick={() =>
+                    setDraft((d) => ({
+                      ...d,
+                      highlights: d.highlights.filter((_, j) => j !== i),
+                    }))
+                  }
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+            ))}
+            <Stack direction="row" spacing={1}>
+              <TextField
+                label="New highlight"
+                value={newHighlight}
+                onChange={(e) => setNewHighlight(e.target.value)}
+                size="small"
+                fullWidth
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addHighlight();
+                  }
+                }}
+              />
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={addHighlight}
+                disabled={!newHighlight.trim()}
+              >
+                Add
+              </Button>
+            </Stack>
+          </Stack>
+        </Box>
+
         <Button
           variant="contained"
           size="small"

@@ -8,6 +8,7 @@ import {
   PuzzleStep,
   Region,
   Trail,
+  TrailImage,
   TrailStop,
   Treasure,
   PLACE_TYPES,
@@ -81,6 +82,7 @@ type Props = {
   treasures: Treasure[];
   trails: Trail[];
   trailStops: TrailStop[];
+  trailImages: TrailImage[];
   selectedRegionId: string | null;
   selectedChainId: string | null;
   selectedStepId: string | null;
@@ -170,6 +172,12 @@ type Props = {
   onRemoveRegionImage: (input: { regionId: string }) => Promise<void> | void;
   onSetTrailImage: (input: { trailId: string; file: File }) => Promise<void> | void;
   onRemoveTrailImage: (input: { trailId: string }) => Promise<void> | void;
+  onAddTrailGalleryImage: (input: {
+    trailId: string;
+    file: File;
+  }) => Promise<void> | void;
+  onRemoveTrailGalleryImage: (input: { imageId: string }) => Promise<void> | void;
+  onReorderTrailGalleryImages: (orderedImageIds: string[]) => Promise<void>;
   getImageUrl: (path: string, cacheKey?: string) => string;
   /** When true, sidebar fills horizontal space (mobile list tab). */
   fullWidth?: boolean;
@@ -196,6 +204,9 @@ type Props = {
       distanceKm: string;
       transportMode: "" | "walk" | "scooter";
       isFree: boolean;
+      showTrail: boolean;
+      isLoop: boolean;
+      highlights: string[];
     },
   ) => Promise<void>;
   onEstimateTrailRoute: (
@@ -572,6 +583,7 @@ export default function Sidebar({
   treasures,
   trails,
   trailStops,
+  trailImages,
   selectedRegionId,
   selectedChainId,
   selectedStepId,
@@ -620,6 +632,9 @@ export default function Sidebar({
   onRemoveRegionImage,
   onSetTrailImage,
   onRemoveTrailImage,
+  onAddTrailGalleryImage,
+  onRemoveTrailGalleryImage,
+  onReorderTrailGalleryImages,
   getImageUrl,
   fullWidth = false,
   canCreateRegions = true,
@@ -676,6 +691,14 @@ export default function Sidebar({
       .slice()
       .sort((a, b) => a.order_index - b.order_index);
   }, [trailStops, selectedTrailId]);
+
+  const sortedTrailImages = useMemo(() => {
+    if (!selectedTrailId) return [];
+    return trailImages
+      .filter((img) => img.trail_id === selectedTrailId)
+      .slice()
+      .sort((a, b) => a.order_index - b.order_index);
+  }, [trailImages, selectedTrailId]);
 
   const chainIdsOnSelectedTrail = useMemo(
     () => new Set(sortedTrailStops.map((s) => s.chain_id)),
@@ -754,7 +777,7 @@ export default function Sidebar({
   >("stops");
   const [expandedRegionSection, setExpandedRegionSection] = useState<
     RegionSidebarSection | false
-  >("locations");
+  >(false);
   const [regionLatText, setRegionLatText] = useState("");
   const [regionLngText, setRegionLngText] = useState("");
   const [regionMapError, setRegionMapError] = useState<string | null>(null);
@@ -771,13 +794,20 @@ export default function Sidebar({
     queueMicrotask(() => {
       setExpandedTrailSection("stops");
       setAddStopChainId("");
+      setExpandedRegionSection("trails");
     });
   }, [selectedTrailId]);
 
   useEffect(() => {
-    if (!selectedRegionId || selectedChainId || selectedTrailId) return;
+    if (!selectedChainId || selectedTrailId) return;
     queueMicrotask(() => {
       setExpandedRegionSection("locations");
+    });
+  }, [selectedChainId, selectedTrailId]);
+
+  useEffect(() => {
+    if (!selectedRegionId || selectedChainId || selectedTrailId) return;
+    queueMicrotask(() => {
       setRegionMapError(null);
     });
   }, [selectedRegionId, selectedChainId, selectedTrailId]);
@@ -1976,6 +2006,111 @@ export default function Sidebar({
                       await onRemoveTrailImage({ trailId: selectedTrail.id });
                     }}
                   />
+                ) : null}
+
+                {selectedTrail ? (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Gallery images
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block", mb: 1 }}
+                    >
+                      Extra photos for the player trail detail carousel (cover
+                      stays separate above).
+                    </Typography>
+                    <Stack spacing={1}>
+                      {sortedTrailImages.map((img, index) => (
+                        <Box
+                          key={img.id}
+                          sx={{
+                            border: "1px solid",
+                            borderColor: "divider",
+                            borderRadius: 1,
+                            p: 1,
+                          }}
+                        >
+                          <Box
+                            component="img"
+                            src={getImageUrl(
+                              img.image_path,
+                              `trail-gallery:${img.id}`,
+                            )}
+                            alt={`Gallery ${index + 1}`}
+                            sx={{
+                              width: "100%",
+                              maxHeight: 100,
+                              objectFit: "cover",
+                              borderRadius: 1,
+                              mb: 1,
+                            }}
+                          />
+                          <Stack direction="row" spacing={1}>
+                            <Button
+                              size="small"
+                              disabled={index === 0}
+                              onClick={() => {
+                                const ids = sortedTrailImages.map((i) => i.id);
+                                const next = [...ids];
+                                [next[index - 1], next[index]] = [
+                                  next[index],
+                                  next[index - 1],
+                                ];
+                                void onReorderTrailGalleryImages(next);
+                              }}
+                            >
+                              Up
+                            </Button>
+                            <Button
+                              size="small"
+                              disabled={index === sortedTrailImages.length - 1}
+                              onClick={() => {
+                                const ids = sortedTrailImages.map((i) => i.id);
+                                const next = [...ids];
+                                [next[index], next[index + 1]] = [
+                                  next[index + 1],
+                                  next[index],
+                                ];
+                                void onReorderTrailGalleryImages(next);
+                              }}
+                            >
+                              Down
+                            </Button>
+                            <Button
+                              size="small"
+                              color="error"
+                              onClick={() =>
+                                void onRemoveTrailGalleryImage({
+                                  imageId: img.id,
+                                })
+                              }
+                            >
+                              Remove
+                            </Button>
+                          </Stack>
+                        </Box>
+                      ))}
+                      <Button component="label" variant="outlined" size="small" fullWidth>
+                        Add gallery image
+                        <input
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (!file) return;
+                            void onAddTrailGalleryImage({
+                              trailId: selectedTrail.id,
+                              file,
+                            });
+                          }}
+                        />
+                      </Button>
+                    </Stack>
+                  </Box>
                 ) : null}
 
                 {selectedTrail ? (

@@ -241,6 +241,38 @@ export type Database = {
         }
         Relationships: []
       }
+      trail_images: {
+        Row: {
+          created_at: string
+          id: string
+          image_path: string
+          order_index: number
+          trail_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_path: string
+          order_index: number
+          trail_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_path?: string
+          order_index?: number
+          trail_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trail_images_trail_id_fkey"
+            columns: ["trail_id"]
+            isOneToOne: false
+            referencedRelation: "trails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trail_stops: {
         Row: {
           chain_id: string
@@ -286,11 +318,14 @@ export type Database = {
           description: string | null
           distance_km: number | null
           duration_minutes: number | null
+          highlights: string[]
           id: string
           image_path: string | null
           is_free: boolean
+          is_loop: boolean
           ready_to_publish: boolean
           region_id: string
+          show_trail: boolean
           title: string
           transport_mode: string | null
         }
@@ -299,11 +334,14 @@ export type Database = {
           description?: string | null
           distance_km?: number | null
           duration_minutes?: number | null
+          highlights?: string[]
           id?: string
           image_path?: string | null
           is_free?: boolean
+          is_loop?: boolean
           ready_to_publish?: boolean
           region_id: string
+          show_trail?: boolean
           title: string
           transport_mode?: string | null
         }
@@ -312,11 +350,14 @@ export type Database = {
           description?: string | null
           distance_km?: number | null
           duration_minutes?: number | null
+          highlights?: string[]
           id?: string
           image_path?: string | null
           is_free?: boolean
+          is_loop?: boolean
           ready_to_publish?: boolean
           region_id?: string
+          show_trail?: boolean
           title?: string
           transport_mode?: string | null
         }

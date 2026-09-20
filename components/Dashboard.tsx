@@ -27,6 +27,7 @@ import {
   PuzzleStep,
   Region,
   Trail,
+  TrailImage,
   TrailStop,
   Treasure,
   parseStepHint,
@@ -194,6 +195,7 @@ export default function Dashboard() {
   const [treasures, setTreasures] = useState<Treasure[]>([]);
   const [trails, setTrails] = useState<Trail[]>([]);
   const [trailStops, setTrailStops] = useState<TrailStop[]>([]);
+  const [trailImages, setTrailImages] = useState<TrailImage[]>([]);
 
   const [selectedCountryId, setSelectedCountryId] = useState<string | null>(
     null,
@@ -414,6 +416,18 @@ export default function Dashboard() {
       .from("trails")
       .select("*")
       .then(({ data }) => setTrails((data || []) as Trail[]));
+  }, [accessOk]);
+
+  // ----------------------------
+  // LOAD TRAIL IMAGES (once)
+  // ----------------------------
+  useEffect(() => {
+    if (!accessOk) return;
+    supabase
+      .from("trail_images")
+      .select("*")
+      .order("order_index", { ascending: true })
+      .then(({ data }) => setTrailImages((data || []) as TrailImage[]));
   }, [accessOk]);
 
   // ----------------------------
@@ -1459,6 +1473,9 @@ export default function Dashboard() {
       distanceKm: string;
       transportMode: "" | "walk" | "scooter";
       isFree: boolean;
+      showTrail: boolean;
+      isLoop: boolean;
+      highlights: string[];
     },
   ) => {
     const durationRaw = metadata.durationMinutes.trim();
@@ -1469,6 +1486,9 @@ export default function Dashboard() {
       distanceRaw === "" ? null : Math.max(0, Number(distanceRaw) || 0);
     const transport_mode =
       metadata.transportMode === "scooter" ? "scooter" : "walk";
+    const highlights = metadata.highlights
+      .map((h) => h.trim())
+      .filter((h) => h.length > 0);
 
     const { error } = await supabase
       .from("trails")
@@ -1478,6 +1498,9 @@ export default function Dashboard() {
         distance_km,
         transport_mode,
         is_free: metadata.isFree,
+        show_trail: metadata.showTrail,
+        is_loop: metadata.isLoop,
+        highlights,
       })
       .eq("id", trailId);
     if (error) throw new Error(formatSupabaseError(error));
@@ -1492,6 +1515,9 @@ export default function Dashboard() {
               distance_km,
               transport_mode,
               is_free: metadata.isFree,
+              show_trail: metadata.showTrail,
+              is_loop: metadata.isLoop,
+              highlights,
             }
           : t,
       ),
@@ -1612,14 +1638,92 @@ export default function Dashboard() {
   const deleteTrail = async (trailId: string) => {
     const trail = trails.find((t) => t.id === trailId) || null;
     if (!trail) return;
-    if (trail.image_path) {
-      await supabase.storage.from("images").remove([trail.image_path]);
+    const galleryPaths = trailImages
+      .filter((img) => img.trail_id === trailId)
+      .map((img) => img.image_path)
+      .filter(Boolean);
+    const toRemove = [
+      ...(trail.image_path ? [trail.image_path] : []),
+      ...galleryPaths,
+    ];
+    if (toRemove.length > 0) {
+      await supabase.storage.from("images").remove(toRemove);
     }
     const { error } = await supabase.from("trails").delete().eq("id", trailId);
     if (error) throw new Error(formatSupabaseError(error));
     setTrails((prev) => prev.filter((t) => t.id !== trailId));
     setTrailStops((prev) => prev.filter((s) => s.trail_id !== trailId));
+    setTrailImages((prev) => prev.filter((img) => img.trail_id !== trailId));
     setSelectedTrailId((prev) => (prev === trailId ? null : prev));
+  };
+
+  const addTrailGalleryImage = async (input: {
+    trailId: string;
+    file: File;
+  }) => {
+    const trail = trails.find((t) => t.id === input.trailId) || null;
+    if (!trail) return;
+    const existing = trailImages.filter((img) => img.trail_id === input.trailId);
+    const maxOrder = existing.reduce((m, img) => Math.max(m, img.order_index), -1);
+    const imageId = crypto.randomUUID();
+    const ext = fileExtensionFromName(input.file.name, "jpg");
+    const objectPath = `trails/${trail.id}/gallery/${imageId}.${ext}`;
+    await uploadStorageImage(supabase, {
+      file: input.file,
+      objectPath,
+    });
+    const { data, error } = await supabase
+      .from("trail_images")
+      .insert({
+        id: imageId,
+        trail_id: trail.id,
+        image_path: objectPath,
+        order_index: maxOrder + 1,
+      })
+      .select("*")
+      .single();
+    if (error) {
+      await removeStorageImage(supabase, objectPath).catch(() => null);
+      throw new Error(formatSupabaseError(error));
+    }
+    setTrailImages((prev) => [...prev, data as TrailImage]);
+    bumpImageCache(`trail-gallery:${imageId}`);
+  };
+
+  const removeTrailGalleryImage = async (input: { imageId: string }) => {
+    const row = trailImages.find((img) => img.id === input.imageId) || null;
+    if (!row) return;
+    if (row.image_path) {
+      await removeStorageImage(supabase, row.image_path);
+    }
+    const { error } = await supabase
+      .from("trail_images")
+      .delete()
+      .eq("id", row.id);
+    if (error) throw new Error(formatSupabaseError(error));
+    setTrailImages((prev) => prev.filter((img) => img.id !== row.id));
+  };
+
+  const reorderTrailGalleryImages = async (orderedImageIds: string[]) => {
+    for (let order_index = 0; order_index < orderedImageIds.length; order_index++) {
+      const id = orderedImageIds[order_index];
+      const { error } = await supabase
+        .from("trail_images")
+        .update({ order_index })
+        .eq("id", id);
+      if (error) throw new Error(formatSupabaseError(error));
+    }
+    setTrailImages((prev) => {
+      const byId = new Map(prev.map((img) => [img.id, img] as const));
+      const reordered = orderedImageIds
+        .map((id, order_index) => {
+          const row = byId.get(id);
+          return row ? { ...row, order_index } : null;
+        })
+        .filter((r): r is TrailImage => r != null);
+      const rest = prev.filter((img) => !orderedImageIds.includes(img.id));
+      return [...reordered, ...rest];
+    });
   };
 
   const addTrailStop = async (input: { trailId: string; chainId: string }) => {
@@ -2021,6 +2125,7 @@ export default function Dashboard() {
       treasures={treasures}
       trails={visibleTrails}
       trailStops={trailStops}
+      trailImages={trailImages}
       selectedRegionId={selectedRegionId}
       selectedChainId={selectedChainId}
       selectedStepId={selectedStepId}
@@ -2032,6 +2137,9 @@ export default function Dashboard() {
       onRemoveRegionImage={removeRegionImage}
       onSetTrailImage={setTrailImage}
       onRemoveTrailImage={removeTrailImage}
+      onAddTrailGalleryImage={addTrailGalleryImage}
+      onRemoveTrailGalleryImage={removeTrailGalleryImage}
+      onReorderTrailGalleryImages={reorderTrailGalleryImages}
       getImageUrl={getImageUrl}
       onZoomStepSpotlight={(lat, lng) => {
         setStepSpotlightCenter([lat, lng]);
