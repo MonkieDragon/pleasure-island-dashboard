@@ -119,21 +119,16 @@ export default function AdminAccessPanel({
   };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <Box sx={{ p: 2 }}>
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>
-          Admin
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-          Assign editor roles and which regions each editor may change.
-        </Typography>
-      </Box>
+    <Box>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, px: 0.5 }}>
+        Assign editor roles and which regions each editor may change.
+      </Typography>
       {error ? (
-        <Typography color="error" variant="body2" sx={{ px: 2, pb: 1 }}>
+        <Typography color="error" variant="body2" sx={{ mb: 1, px: 0.5 }}>
           {error}
         </Typography>
       ) : null}
-      <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", px: 1, pb: 2 }}>
+      <Box sx={{ overflow: "auto" }}>
         <Table size="small" component={Paper} variant="outlined">
           <TableHead>
             <TableRow>
@@ -150,7 +145,7 @@ export default function AdminAccessPanel({
               const busy = savingUserId === p.id;
               return (
                 <TableRow key={p.id}>
-                  <TableCell sx={{ maxWidth: 200, verticalAlign: "top" }}>
+                  <TableCell sx={{ maxWidth: 220, verticalAlign: "top" }}>
                     <Typography variant="body2" noWrap title={p.email ?? p.id}>
                       {p.email ?? p.id}
                     </Typography>
@@ -160,7 +155,7 @@ export default function AdminAccessPanel({
                       </Typography>
                     ) : null}
                   </TableCell>
-                  <TableCell sx={{ verticalAlign: "top" }}>
+                  <TableCell sx={{ verticalAlign: "top", minWidth: 140 }}>
                     <FormControl size="small" fullWidth disabled={isSelf || busy}>
                       <InputLabel id={`role-${p.id}`}>Role</InputLabel>
                       <Select

@@ -294,7 +294,7 @@ function InteractiveConfigEditor({
         onChange({
           subtype: "jigsaw",
           imagePath: jigsawImagePath ?? "",
-          gridSize: config.subtype === "jigsaw" ? config.gridSize : 3,
+          gridSize: config.subtype === "jigsaw" ? config.gridSize : 5,
         });
         break;
     }
@@ -637,7 +637,6 @@ function JigsawFields({
           <MenuItem value={3}>3 &times; 3</MenuItem>
           <MenuItem value={4}>4 &times; 4</MenuItem>
           <MenuItem value={5}>5 &times; 5</MenuItem>
-          <MenuItem value={6}>6 &times; 6</MenuItem>
         </Select>
       </FormControl>
     </>
@@ -913,7 +912,7 @@ export default function SingleStepEditor({
           const saved = parseInteractiveConfig(step?.config);
           const imagePath = saved.subtype === "jigsaw" ? saved.imagePath : "";
           if (!imagePath) return "Jigsaw needs a source image.";
-          if (cfg.gridSize < 2 || cfg.gridSize > 6) return "Grid size must be between 2 and 6.";
+          if (cfg.gridSize < 2 || cfg.gridSize > 5) return "Grid size must be between 2 and 5.";
           break;
         }
       }
