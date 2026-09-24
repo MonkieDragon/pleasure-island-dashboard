@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PuzzleStep,
   PuzzleStepType,
@@ -7,6 +7,7 @@ import {
   isInteractiveSubtype,
   INTERACTIVE_SUBTYPES,
   INTERACTIVE_SUBTYPE_LABELS,
+  isSymbolColor,
   parseStepHint,
   serializeStepHint,
   type InteractiveSubtype,
@@ -80,6 +81,12 @@ type Props = {
   onRemoveSymbolImage: (input: {
     stepId: string;
     symbolIndex: number;
+  }) => Promise<void> | void;
+  onAddSymbolColor: (input: { stepId: string; color: string }) => Promise<void> | void;
+  onUpdateSymbolColor: (input: {
+    stepId: string;
+    symbolIndex: number;
+    color: string;
   }) => Promise<void> | void;
   getImageUrl: (path: string, cacheKey?: string) => string;
   /** Larger inputs + scroll focused field into view (mobile editor panel). */
@@ -255,6 +262,8 @@ function InteractiveConfigEditor({
   onRemoveJigsawImage,
   onUploadSymbolFiles,
   onRemoveSymbolAtIndex,
+  onAddSymbolColor,
+  onUpdateSymbolColor,
 }: {
   config: InteractiveConfig;
   answerError: string | null;
@@ -273,6 +282,8 @@ function InteractiveConfigEditor({
   onRemoveJigsawImage: () => void;
   onUploadSymbolFiles: (files: File[]) => Promise<void> | void;
   onRemoveSymbolAtIndex: (symbolIndex: number) => Promise<void> | void;
+  onAddSymbolColor: (color: string) => Promise<void> | void;
+  onUpdateSymbolColor: (symbolIndex: number, color: string) => Promise<void> | void;
 }) {
   const setSubtype = (subtype: InteractiveSubtype) => {
     switch (subtype) {
@@ -341,6 +352,8 @@ function InteractiveConfigEditor({
           getImageUrl={getImageUrl}
           onUploadSymbolFiles={onUploadSymbolFiles}
           onRemoveSymbolAtIndex={onRemoveSymbolAtIndex}
+          onAddSymbolColor={onAddSymbolColor}
+          onUpdateSymbolColor={onUpdateSymbolColor}
         />
       )}
       {config.subtype === "code_wheel" && (
@@ -446,6 +459,8 @@ function SymbolCodexFields({
   getImageUrl,
   onUploadSymbolFiles,
   onRemoveSymbolAtIndex,
+  onAddSymbolColor,
+  onUpdateSymbolColor,
 }: {
   config: SymbolCodexConfig;
   onChange: (next: InteractiveConfig) => void;
@@ -454,23 +469,27 @@ function SymbolCodexFields({
   getImageUrl: (path: string, cacheKey?: string) => string;
   onUploadSymbolFiles: (files: File[]) => Promise<void> | void;
   onRemoveSymbolAtIndex: (symbolIndex: number) => Promise<void> | void;
+  onAddSymbolColor: (color: string) => Promise<void> | void;
+  onUpdateSymbolColor: (symbolIndex: number, color: string) => Promise<void> | void;
 }) {
   const maxIndex = Math.max(0, config.symbols.length - 1);
   const slotValues = Array.from({ length: config.slotCount }, (_, i) => {
     const v = config.answerArray[i] ?? 0;
     return Math.min(Math.max(0, v), maxIndex);
   });
+  const symbolSrc = (path: string) => getImageUrl(path, `step-symbols:${stepId}`);
 
   return (
     <>
       <Box>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Symbols
+          Symbols &amp; colours
         </Typography>
         <Stack spacing={1}>
           {config.symbols.length === 0 ? (
             <Typography variant="caption" color="text.secondary">
-              No symbols yet. Upload PNG icons (transparent background recommended).
+              No symbols or colours yet. Upload PNG icons (transparent background
+              recommended) or add colours.
             </Typography>
           ) : (
             <Box
@@ -497,19 +516,28 @@ function SymbolCodexFields({
                   <Typography variant="caption" color="text.secondary">
                     [{idx}]
                   </Typography>
-                  <Box
-                    component="img"
-                    key={`${path}-${idx}`}
-                    src={getImageUrl(path, `step-symbols:${stepId}`)}
-                    alt={`Symbol ${idx}`}
-                    sx={{
-                      width: 64,
-                      height: 64,
-                      objectFit: "contain",
-                      bgcolor: "action.hover",
-                      borderRadius: 1,
-                    }}
-                  />
+                  {isSymbolColor(path) ? (
+                    <SymbolColorSwatch
+                      color={path}
+                      label={`Colour ${idx}`}
+                      onCommit={(color) => {
+                        void onUpdateSymbolColor(idx, color);
+                      }}
+                    />
+                  ) : (
+                    <Box
+                      component="img"
+                      src={symbolSrc(path)}
+                      alt={`Symbol ${idx}`}
+                      sx={{
+                        width: 64,
+                        height: 64,
+                        objectFit: "contain",
+                        bgcolor: "action.hover",
+                        borderRadius: 1,
+                      }}
+                    />
+                  )}
                   <Button
                     size="small"
                     color="error"
@@ -525,24 +553,37 @@ function SymbolCodexFields({
             </Box>
           )}
 
-          <Button component="label" variant="outlined" size="small">
-            Upload symbol images
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              hidden
-              onChange={async (e) => {
-                const files = Array.from(e.target.files ?? []);
-                e.target.value = "";
-                if (files.length === 0) return;
-                await onUploadSymbolFiles(files);
+          <Stack direction="row" spacing={1}>
+            <Button component="label" variant="outlined" size="small" sx={{ flex: 1 }}>
+              Upload symbol images
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  e.target.value = "";
+                  if (files.length === 0) return;
+                  await onUploadSymbolFiles(files);
+                }}
+              />
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              sx={{ flex: 1 }}
+              onClick={() => {
+                void onAddSymbolColor(DEFAULT_SYMBOL_COLOR);
               }}
-            />
-          </Button>
+            >
+              Add colour
+            </Button>
+          </Stack>
           <Typography variant="caption" color="text.secondary">
-            Recommended: square transparent PNG (e.g. 256×256 or 512×512). Indices are
-            0-based and used by the answer array.
+            Symbols: square transparent PNG (e.g. 256×256 or 512×512). Colours appear as
+            coloured circles; click a circle to change it. Indices are 0-based and used by
+            the answer array.
           </Typography>
         </Stack>
       </Box>
@@ -560,7 +601,7 @@ function SymbolCodexFields({
       />
       <Box>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Answer (one symbol per slot)
+          Answer (one symbol or colour per slot)
         </Typography>
         <Stack spacing={1}>
           {slotValues.map((value, slot) => (
@@ -579,7 +620,10 @@ function SymbolCodexFields({
               >
                 {config.symbols.map((path, idx) => (
                   <MenuItem key={`${path}-${idx}`} value={idx}>
-                    [{idx}]
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                      <SymbolPreview value={path} src={symbolSrc} />
+                      <span>[{idx}]</span>
+                    </Stack>
                   </MenuItem>
                 ))}
               </Select>
@@ -588,6 +632,97 @@ function SymbolCodexFields({
         </Stack>
       </Box>
     </>
+  );
+}
+
+const DEFAULT_SYMBOL_COLOR = "#e53935";
+
+/** Small inline preview (answer slot menu): colour circle or symbol thumbnail. */
+function SymbolPreview({ value, src }: { value: string; src: (path: string) => string }) {
+  if (isSymbolColor(value)) {
+    return (
+      <Box
+        sx={{
+          width: 20,
+          height: 20,
+          borderRadius: "50%",
+          bgcolor: value,
+          border: "1px solid",
+          borderColor: "divider",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+  return (
+    <Box
+      component="img"
+      src={src(value)}
+      alt=""
+      sx={{ width: 20, height: 20, objectFit: "contain", flexShrink: 0 }}
+    />
+  );
+}
+
+/**
+ * Circle swatch over a native colour input. Previews locally while the picker is open
+ * and only commits on the native `change` event (picker closed), since React's
+ * `onChange` fires on every drag tick.
+ */
+function SymbolColorSwatch({
+  color,
+  label,
+  onCommit,
+}: {
+  color: string;
+  label: string;
+  onCommit: (color: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [value, setValue] = useState(color);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const handleChange = () => onCommit(input.value);
+    input.addEventListener("change", handleChange);
+    return () => input.removeEventListener("change", handleChange);
+  }, [onCommit]);
+
+  return (
+    <Box
+      component="label"
+      title={label}
+      sx={{
+        position: "relative",
+        width: 64,
+        height: 64,
+        borderRadius: "50%",
+        bgcolor: value,
+        border: "1px solid",
+        borderColor: "divider",
+        cursor: "pointer",
+        overflow: "hidden",
+      }}
+    >
+      <input
+        ref={inputRef}
+        type="color"
+        aria-label={label}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          opacity: 0,
+          cursor: "pointer",
+          border: 0,
+          padding: 0,
+        }}
+      />
+    </Box>
   );
 }
 
@@ -662,6 +797,8 @@ export default function SingleStepEditor({
   onRemoveJigsawImage,
   onUploadSymbolImages,
   onRemoveSymbolImage,
+  onAddSymbolColor,
+  onUpdateSymbolColor,
   getImageUrl,
   compactMobile = false,
 }: Props) {
@@ -894,7 +1031,7 @@ export default function SingleStepEditor({
           break;
         }
         case "symbol_codex":
-          if (cfg.symbols.length === 0) return "Symbol codex needs at least one symbol.";
+          if (cfg.symbols.length === 0) return "Symbol codex needs at least one symbol or colour.";
           if (cfg.slotCount < 1) return "Symbol codex needs at least 1 slot.";
           if (cfg.answerArray.length !== cfg.slotCount) return "Answer array length must match slot count.";
           break;
@@ -1273,6 +1410,12 @@ export default function SingleStepEditor({
                 }}
                 onRemoveSymbolAtIndex={async (symbolIndex) => {
                   await onRemoveSymbolImage({ stepId: step.id, symbolIndex });
+                }}
+                onAddSymbolColor={async (color) => {
+                  await onAddSymbolColor({ stepId: step.id, color });
+                }}
+                onUpdateSymbolColor={async (symbolIndex, color) => {
+                  await onUpdateSymbolColor({ stepId: step.id, symbolIndex, color });
                 }}
               />
             )}

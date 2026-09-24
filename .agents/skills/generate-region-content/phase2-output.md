@@ -49,7 +49,7 @@ Domain: **trail** → ordered **locations** (chains) → ordered **steps**.
 - `qr` — content + qr payload string (only if real or planned)
 - `interactive` — content + config subtype:
   - `camera_overlay`
-  - `symbol_codex`
+  - `symbol_codex` (each `symbols` entry is an uploaded image path or a `#rrggbb` hex colour, shown as a coloured circle)
   - `code_wheel`
   - `jigsaw`
 

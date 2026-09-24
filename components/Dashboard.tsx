@@ -30,6 +30,7 @@ import {
   TrailImage,
   TrailStop,
   Treasure,
+  isSymbolColor,
   parseStepHint,
   serializeStepHint,
   type CameraOverlayConfig,
@@ -1035,6 +1036,40 @@ export default function Dashboard() {
     bumpImageCache(`step-symbols:${step.id}`);
   };
 
+  const addSymbolColor = async (input: { stepId: string; color: string }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step || !isSymbolColor(input.color)) return;
+
+    const prevConfig = symbolCodexConfigFromStep(step);
+    const nextConfig: SymbolCodexConfig = {
+      ...prevConfig,
+      symbols: [...prevConfig.symbols, input.color.toLowerCase()],
+    };
+    await updateStep({ ...step, config: nextConfig });
+  };
+
+  const updateSymbolColor = async (input: {
+    stepId: string;
+    symbolIndex: number;
+    color: string;
+  }) => {
+    const step = steps.find((s) => s.id === input.stepId) || null;
+    if (!step || !isSymbolColor(input.color)) return;
+
+    const prevConfig = symbolCodexConfigFromStep(step);
+    const i = input.symbolIndex;
+    const current = prevConfig.symbols[i];
+    if (current === undefined || !isSymbolColor(current)) return;
+    const color = input.color.toLowerCase();
+    if (current.toLowerCase() === color) return;
+
+    const nextConfig: SymbolCodexConfig = {
+      ...prevConfig,
+      symbols: prevConfig.symbols.map((s, idx) => (idx === i ? color : s)),
+    };
+    await updateStep({ ...step, config: nextConfig });
+  };
+
   const removeSymbolImage = async (input: {
     stepId: string;
     symbolIndex: number;
@@ -1047,7 +1082,7 @@ export default function Dashboard() {
     if (i < 0 || i >= prevConfig.symbols.length) return;
 
     const removedPath = prevConfig.symbols[i];
-    if (removedPath) {
+    if (removedPath && !isSymbolColor(removedPath)) {
       await supabase.storage.from("images").remove([removedPath]);
     }
 
@@ -2317,6 +2352,8 @@ export default function Dashboard() {
         onRemoveJigsawImage={removeStepJigsawImage}
         onUploadSymbolImages={uploadSymbolImages}
         onRemoveSymbolImage={removeSymbolImage}
+        onAddSymbolColor={addSymbolColor}
+        onUpdateSymbolColor={updateSymbolColor}
         getImageUrl={getImageUrl}
         compactMobile={compactMobile}
       />

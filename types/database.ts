@@ -140,10 +140,15 @@ export type CameraOverlayConfig = {
 
 export type SymbolCodexConfig = {
   subtype: "symbol_codex";
+  /** Each entry is a storage object key (image) or a `#rrggbb` hex colour. */
   symbols: string[];
   slotCount: number;
   answerArray: number[];
 };
+
+export function isSymbolColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value);
+}
 
 export type CodeWheelConfig = {
   subtype: "code_wheel";
