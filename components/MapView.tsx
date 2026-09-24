@@ -282,10 +282,7 @@ export default function MapView(props: Props) {
     (s): s is PuzzleStep & { latitude: number; longitude: number } =>
       s.latitude !== null && s.longitude !== null,
   );
-  const showChainMarkers =
-    !!selectedRegionId &&
-    !selectedTrailId &&
-    (!selectedChainId || visibleStepsWithCoords.length === 0);
+  const showChainMarkers = !!selectedRegionId;
 
   const selectedTrailStops = useMemo(() => {
     if (!selectedTrailId) return [];
@@ -307,6 +304,11 @@ export default function MapView(props: Props) {
         (row): row is { chain: PuzzleChain; optional: boolean } => row !== null,
       );
   }, [selectedTrailStops, regionChains]);
+
+  const trailStopChainIds = useMemo(
+    () => new Set(selectedTrailStops.map((s) => s.chain_id)),
+    [selectedTrailStops],
+  );
 
   const trailRoute = useMemo(
     () =>
@@ -626,11 +628,18 @@ export default function MapView(props: Props) {
           {!!selectedRegionId &&
             showChainMarkers &&
             regionChainsWithCoords.map((c) => {
+              const isSelected = c.id === selectedChainId;
+              if (isSelected && visibleStepsWithCoords.length > 0) return null;
+              if (selectedTrailId && trailStopChainIds.has(c.id)) return null;
+              const dimmed =
+                (!!selectedChainId && !isSelected) || !!selectedTrailId;
               return (
                 <Marker
                   key={c.id}
                   position={[c.latitude, c.longitude]}
                   icon={chainMapMarkerIcon(c.optional !== false)}
+                  opacity={dimmed ? 0.35 : 1}
+                  zIndexOffset={dimmed ? -1000 : 0}
                   eventHandlers={{
                     click: () => onSelectChain(c.id),
                     mouseover: () =>
