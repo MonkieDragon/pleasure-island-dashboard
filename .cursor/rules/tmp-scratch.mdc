@@ -1,0 +1,13 @@
+---
+description: Put throwaway scripts and dumps in gitignored tmp/
+alwaysApply: true
+---
+
+# Scratch / temp files
+
+- Put one-off query scripts, stdout dumps, and other throwaway files in `tmp/` (gitignored).
+- Never create `tmp-*`, `tmp-out*`, or similar scratch files in the repo root.
+- Do not commit anything under `tmp/`.
+- Durable scripts belong in `scripts/`; lasting notes/docs belong in an intentional tracked path (e.g. `.agents/` or `docs/`), not `tmp/`.
+- Prefer existing tools (`npx supabase`, npm scripts) over new one-off scripts when they already cover the need.
+- When finished with a throwaway, delete it or leave it in `tmp/` — do not leave scratch files in the root or `lib/`.

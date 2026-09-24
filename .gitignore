@@ -34,8 +34,13 @@ debug-*.log
 # env files (can opt-in for committing if needed)
 .env*
 
-# cursor
-.cursor/
+# cursor (keep project rules tracked)
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+
+# local throwaway scripts / dumps (never commit)
+/tmp/
 
 # vercel
 .vercel
