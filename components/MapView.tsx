@@ -638,7 +638,7 @@ export default function MapView(props: Props) {
                   key={c.id}
                   position={[c.latitude, c.longitude]}
                   icon={chainMapMarkerIcon(c.optional !== false)}
-                  opacity={dimmed ? 0.35 : 1}
+                  opacity={dimmed ? 0.65 : 1}
                   zIndexOffset={dimmed ? -1000 : 0}
                   eventHandlers={{
                     click: () => onSelectChain(c.id),
