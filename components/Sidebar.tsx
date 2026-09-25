@@ -195,6 +195,10 @@ type Props = {
     chainId: string,
     exploreVisible: boolean,
   ) => Promise<void>;
+  onSetChainStepsUnordered: (
+    chainId: string,
+    stepsUnordered: boolean,
+  ) => Promise<void>;
   onSetChainPlaceType: (chainId: string, placeType: PlaceType) => Promise<void>;
   onUpdateTrailMetadata: (
     trailId: string,
@@ -646,6 +650,7 @@ export default function Sidebar({
   onRenameTrail,
   onSetChainOptional,
   onSetChainExploreVisible,
+  onSetChainStepsUnordered,
   onSetChainPlaceType,
   onUpdateTrailMetadata,
   onEstimateTrailRoute,
@@ -1168,6 +1173,18 @@ export default function Sidebar({
     setFlagBusy(true);
     try {
       await onSetChainExploreVisible(selectedChain.id, exploreVisible);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setFlagBusy(false);
+    }
+  };
+
+  const setStepsUnordered = async (stepsUnordered: boolean) => {
+    if (!selectedChain) return;
+    setFlagBusy(true);
+    try {
+      await onSetChainStepsUnordered(selectedChain.id, stepsUnordered);
     } catch (e) {
       setCreateError(formatSupabaseError(e));
     } finally {
@@ -2308,6 +2325,19 @@ export default function Sidebar({
                       }
                       label="Side find (optional)"
                     />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={selectedChain.steps_unordered === true}
+                          disabled={flagBusy}
+                          onChange={(e) =>
+                            void setStepsUnordered(e.target.checked)
+                          }
+                        />
+                      }
+                      label="Steps in any order"
+                    />
                     <FormControl size="small" sx={{ minWidth: 140 }} disabled={flagBusy}>
                       <InputLabel id="place-type-label">Place type</InputLabel>
                       <Select
@@ -2331,6 +2361,13 @@ export default function Sidebar({
                       </Select>
                     </FormControl>
                   </Box>
+                ) : null}
+
+                {selectedChain?.steps_unordered ? (
+                  <Typography variant="caption" color="text.secondary">
+                    Leading info steps play first; info steps after a question show
+                    once it&apos;s answered.
+                  </Typography>
                 ) : null}
 
                 {selectedChain ? (

@@ -105,6 +105,7 @@ export type Database = {
           place_type: string
           ready_to_publish: boolean
           region_id: string | null
+          steps_unordered: boolean
           title: string
         }
         Insert: {
@@ -118,6 +119,7 @@ export type Database = {
           place_type?: string
           ready_to_publish?: boolean
           region_id?: string | null
+          steps_unordered?: boolean
           title: string
         }
         Update: {
@@ -131,6 +133,7 @@ export type Database = {
           place_type?: string
           ready_to_publish?: boolean
           region_id?: string | null
+          steps_unordered?: boolean
           title?: string
         }
         Relationships: [

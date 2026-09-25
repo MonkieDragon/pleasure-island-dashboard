@@ -1481,6 +1481,22 @@ export default function Dashboard() {
     );
   };
 
+  const setChainStepsUnordered = async (
+    chainId: string,
+    stepsUnordered: boolean,
+  ) => {
+    const { error } = await supabase
+      .from("puzzle_chains")
+      .update({ steps_unordered: stepsUnordered })
+      .eq("id", chainId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setChains((prev) =>
+      prev.map((c) =>
+        c.id === chainId ? { ...c, steps_unordered: stepsUnordered } : c,
+      ),
+    );
+  };
+
   const setChainPlaceType = async (chainId: string, placeType: PlaceType) => {
     const { error } = await supabase
       .from("puzzle_chains")
@@ -2248,6 +2264,7 @@ export default function Dashboard() {
       onRenameTrail={renameTrail}
       onSetChainOptional={setChainOptional}
       onSetChainExploreVisible={setChainExploreVisible}
+      onSetChainStepsUnordered={setChainStepsUnordered}
       onSetChainPlaceType={setChainPlaceType}
       onUpdateTrailMetadata={updateTrailMetadata}
       onEstimateTrailRoute={estimateTrailRouteStats}

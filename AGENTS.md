@@ -127,6 +127,7 @@ Rules:
 
 - A location may appear on **multiple trails** (shared spine across related adventures). A location may appear at most once per trail.
 - `trail_stops.optional` marks skippable stops inside a trail (distinct from `puzzle_chains.optional`, which is Explore “side find”).
+- `puzzle_chains.steps_unordered` (default false): when true, players answer the location’s questions in any order from a list. Leading info steps still play first; info steps after a question belong to that question and show once it is answered.
 - `puzzle_chains.explore_visible` controls Explore: when true, a published location appears on the Explore map (including locations that are also on trails). When false, the location is **trail-only** (narrative glue / exclusive mystery beats).
 - Progress / purchase keys use **trail id**.
 - `ready_to_publish` exists on trails, locations (`puzzle_chains`), and steps. The player catalog is published trails only; unpublished locations stay dashboard-side.
