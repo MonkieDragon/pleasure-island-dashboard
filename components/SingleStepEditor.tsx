@@ -948,12 +948,15 @@ export default function SingleStepEditor({
   const dirty = useMemo(() => {
     if (!step || !draft) return false;
     const base = toDraft(step);
+    const draftAlternatives = parseAlternativeAnswersText(draft.alternativeAnswersText, draft);
+    const savedAlternatives = parseAlternativeAnswersText(base.alternativeAnswersText, draft);
     return (
       base.type !== draft.type ||
       base.content !== draft.content ||
       base.notes !== draft.notes ||
       base.answerText !== draft.answerText ||
-      base.alternativeAnswersText !== draft.alternativeAnswersText ||
+      draftAlternatives.error !== null ||
+      draftAlternatives.answers.join(",") !== savedAlternatives.answers.join(",") ||
       base.incorrectOption1Text !== draft.incorrectOption1Text ||
       base.incorrectOption2Text !== draft.incorrectOption2Text ||
       base.incorrectOption3Text !== draft.incorrectOption3Text ||
@@ -1100,6 +1103,10 @@ export default function SingleStepEditor({
     };
 
     await onUpdate(next);
+    setDraftByStepId((prev) => ({
+      ...prev,
+      [step.id]: { ...toDraft(next), latText: draft.latText, lngText: draft.lngText },
+    }));
   };
 
   if (!step || !draft) {
