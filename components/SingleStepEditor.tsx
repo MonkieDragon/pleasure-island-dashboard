@@ -215,6 +215,15 @@ function incorrectOptionsFromStep(
   };
 }
 
+/** Non-empty incorrect options (1–3); blank inputs are ignored. */
+function incorrectOptionsFromDraft(draft: Draft): string[] {
+  return [
+    draft.incorrectOption1Text.trim(),
+    draft.incorrectOption2Text.trim(),
+    draft.incorrectOption3Text.trim(),
+  ].filter((option) => option !== "");
+}
+
 function toDraft(step: PuzzleStep): Draft {
   const type: PuzzleStepType = isPuzzleStepType(step.type) ? step.type : "text";
   const rawAnswer = step.answer;
@@ -999,13 +1008,8 @@ export default function SingleStepEditor({
     }
     if (draft.type === "multiple_choice") {
       if (a === "") return "Multiple choice steps need a correct answer.";
-      const incorrect = [
-        draft.incorrectOption1Text.trim(),
-        draft.incorrectOption2Text.trim(),
-        draft.incorrectOption3Text.trim(),
-      ];
-      if (incorrect.some((option) => option === "")) {
-        return "Multiple choice steps need 3 incorrect options.";
+      if (incorrectOptionsFromDraft(draft).length === 0) {
+        return "Multiple choice steps need at least 1 incorrect option.";
       }
     }
     if (showsAlternativeAnswers(draft)) {
@@ -1070,12 +1074,7 @@ export default function SingleStepEditor({
     const answer = draft.type === "info" ? null : trimmedAnswer === "" ? null : trimmedAnswer;
     const multiple_choice_options =
       draft.type === "multiple_choice"
-        ? [
-            trimmedAnswer,
-            draft.incorrectOption1Text.trim(),
-            draft.incorrectOption2Text.trim(),
-            draft.incorrectOption3Text.trim(),
-          ]
+        ? [trimmedAnswer, ...incorrectOptionsFromDraft(draft)]
         : null;
 
     const alternative_answers = showsAlternativeAnswers(draft)
@@ -1374,7 +1373,9 @@ export default function SingleStepEditor({
                     {...mobileInputProps}
                   />
                 </Stack>
-                {!!answerError && <FormHelperText>{answerError}</FormHelperText>}
+                <FormHelperText>
+                  {answerError || "At least 1. Empty options are left out in the app."}
+                </FormHelperText>
               </FormControl>
             )}
 
