@@ -10,6 +10,35 @@ export type Treasure = PublicTables["treasures"]["Row"];
 export type Trail = PublicTables["trails"]["Row"];
 export type TrailStop = PublicTables["trail_stops"]["Row"];
 export type TrailImage = PublicTables["trail_images"]["Row"];
+export type Zone = PublicTables["zones"]["Row"];
+export type PlayerFeedback = PublicTables["player_feedback"]["Row"];
+export type PlayEvent = PublicTables["play_events"]["Row"];
+
+export type FeedbackStatus = "new" | "seen" | "resolved";
+
+/** player_feedback row with names embedded for display. */
+export type FeedbackItem = PlayerFeedback & {
+  regions: { name: string } | null;
+  trails: { title: string } | null;
+  puzzle_chains: { title: string } | null;
+  puzzle_steps: { order_index: number } | null;
+};
+
+/** Per-trail player counts derived from play_events (distinct players per stage). */
+export type TrailFunnel = {
+  started: number;
+  completed: number;
+  stops: {
+    chainId: string;
+    title: string;
+    optional: boolean;
+    reached: number;
+    completed: number;
+    skipped: number;
+    wrongAnswers: number;
+    hintsUsed: number;
+  }[];
+};
 
 export type PuzzleStepRow = PublicTables["puzzle_steps"]["Row"];
 

@@ -11,15 +11,22 @@ import {
   TrailImage,
   TrailStop,
   Treasure,
+  Zone,
   PLACE_TYPES,
   PLACE_TYPE_LABELS,
   isPlaceType,
+  type FeedbackItem,
+  type FeedbackStatus,
   type PlaceType,
+  type TrailFunnel,
 } from "@/types/database";
+import FeedbackList from "@/components/FeedbackList";
 import type { MapHover } from "@/types/mapUi";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CloseIcon from "@mui/icons-material/Close";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import LockIcon from "@mui/icons-material/Lock";
 import ZoomInMapIcon from "@mui/icons-material/ZoomInMap";
 import {
@@ -69,9 +76,14 @@ import { useEffect, useMemo, useState } from "react";
 import TrailMetadataEditor from "./TrailMetadataEditor";
 import EditorAccordion from "@/components/EditorAccordion";
 
-type ChainSidebarSection = "details" | "steps";
-type TrailSidebarSection = "details" | "stops";
-type RegionSidebarSection = "details" | "locations" | "treasures" | "trails";
+type ChainSidebarSection = "details" | "steps" | "feedback";
+type TrailSidebarSection = "details" | "stops" | "players" | "feedback";
+type RegionSidebarSection =
+  | "details"
+  | "locations"
+  | "treasures"
+  | "trails"
+  | "zones";
 
 type Props = {
   countries: Country[];
@@ -83,6 +95,17 @@ type Props = {
   trails: Trail[];
   trailStops: TrailStop[];
   trailImages: TrailImage[];
+  zones: Zone[];
+  selectedZoneId: string | null;
+  onSelectZone: (id: string | null) => void;
+  onCreateZone: (input: { name: string; regionId: string }) => Promise<void>;
+  onRenameZone: (zoneId: string, name: string) => Promise<void>;
+  onSetZoneReadyToPublish: (zoneId: string, ready: boolean) => Promise<void>;
+  onSetZoneImage: (input: { zoneId: string; file: File }) => Promise<void> | void;
+  onRemoveZoneImage: (input: { zoneId: string }) => Promise<void> | void;
+  onMoveZone: (zoneId: string, direction: -1 | 1) => Promise<void>;
+  onDeleteZone: (zoneId: string) => Promise<void>;
+  onSetChainZone: (chainId: string, zoneId: string | null) => Promise<void>;
   selectedRegionId: string | null;
   selectedChainId: string | null;
   selectedStepId: string | null;
@@ -221,7 +244,84 @@ type Props = {
   onSetTrailStopOptional: (stopId: string, optional: boolean) => Promise<void>;
   onRemoveTrailStop: (stopId: string) => Promise<void>;
   onReorderTrailStops: (orderedStopIds: string[]) => Promise<void>;
+  /** Unresolved player feedback for the selected location. */
+  chainFeedback: FeedbackItem[];
+  /** Unresolved trail-level player feedback (end-of-trail ratings) for the selected trail. */
+  trailFeedback: FeedbackItem[];
+  /** Unresolved "new spot" suggestions for the selected region. */
+  regionSpotFeedback: FeedbackItem[];
+  onSetFeedbackStatus: (id: string, status: FeedbackStatus) => void;
+  /** Player funnel for the selected trail; null while loading. */
+  trailFunnel: TrailFunnel | null;
 };
+
+function feedbackSubtitle(items: FeedbackItem[]): string {
+  if (items.length === 0) return "None";
+  const fresh = items.filter((f) => f.status === "new").length;
+  return fresh > 0 ? `${items.length} open · ${fresh} new` : `${items.length} open`;
+}
+
+function TrailFunnelView({ funnel }: { funnel: TrailFunnel | null }) {
+  if (!funnel) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        Loading…
+      </Typography>
+    );
+  }
+  if (funnel.started === 0) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        No players have started this trail yet.
+      </Typography>
+    );
+  }
+  const pct = (n: number) => `${Math.round((n / funnel.started) * 100)}%`;
+  return (
+    <Stack spacing={1}>
+      <Typography variant="body2">
+        <strong>{funnel.started}</strong> started ·{" "}
+        <strong>{funnel.completed}</strong> finished ({pct(funnel.completed)})
+      </Typography>
+      <List dense disablePadding>
+        {funnel.stops.map((s, i) => (
+          <Box
+            key={s.chainId}
+            sx={{ py: 0.75, borderTop: i === 0 ? 0 : 1, borderColor: "divider" }}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+              {i + 1}. {s.title}
+              {s.optional ? " (optional)" : ""}
+            </Typography>
+            <Box
+              sx={{
+                height: 6,
+                borderRadius: 3,
+                bgcolor: "action.hover",
+                overflow: "hidden",
+                my: 0.5,
+              }}
+            >
+              <Box
+                sx={{
+                  height: "100%",
+                  width: pct(s.completed),
+                  bgcolor: "primary.main",
+                }}
+              />
+            </Box>
+            <Typography variant="caption" color="text.secondary" component="div">
+              Reached {s.reached} · Completed {s.completed} ({pct(s.completed)})
+              {s.skipped > 0 ? ` · Skipped ${s.skipped}` : ""}
+              {s.wrongAnswers > 0 ? ` · Wrong answers ${s.wrongAnswers}` : ""}
+              {s.hintsUsed > 0 ? ` · Hints ${s.hintsUsed}` : ""}
+            </Typography>
+          </Box>
+        ))}
+      </List>
+    </Stack>
+  );
+}
 
 function stepContentPreview(content: string | null): string {
   const t = content?.replace(/\s+/g, " ").trim();
@@ -588,6 +688,17 @@ export default function Sidebar({
   trails,
   trailStops,
   trailImages,
+  zones,
+  selectedZoneId,
+  onSelectZone,
+  onCreateZone,
+  onRenameZone,
+  onSetZoneReadyToPublish,
+  onSetZoneImage,
+  onRemoveZoneImage,
+  onMoveZone,
+  onDeleteZone,
+  onSetChainZone,
   selectedRegionId,
   selectedChainId,
   selectedStepId,
@@ -658,6 +769,11 @@ export default function Sidebar({
   onSetTrailStopOptional,
   onRemoveTrailStop,
   onReorderTrailStops,
+  chainFeedback,
+  trailFeedback,
+  regionSpotFeedback,
+  onSetFeedbackStatus,
+  trailFunnel,
 }: Props) {
   const selectedCountry = getCountryById(selectedCountryId);
   const selectedRegion = selectedRegionId
@@ -688,6 +804,17 @@ export default function Sidebar({
   const regionTrails = selectedRegionId
     ? trails.filter((t) => t.region_id === selectedRegionId)
     : [];
+
+  const regionZones = useMemo(
+    () =>
+      selectedRegionId
+        ? zones
+            .filter((z) => z.region_id === selectedRegionId)
+            .slice()
+            .sort((a, b) => a.order_index - b.order_index)
+        : [],
+    [zones, selectedRegionId],
+  );
 
   const sortedTrailStops = useMemo(() => {
     if (!selectedTrailId) return [];
@@ -766,6 +893,14 @@ export default function Sidebar({
   });
   const [createLocationMode, setCreateLocationMode] = useState(false);
   const [createTrailMode, setCreateTrailMode] = useState(false);
+  const [newZoneName, setNewZoneName] = useState("");
+  const [zoneNameDraft, setZoneNameDraft] = useState<{
+    zoneId: string | null;
+    value: string;
+  }>({ zoneId: null, value: "" });
+  const [zoneBusy, setZoneBusy] = useState(false);
+  const [zoneError, setZoneError] = useState<string | null>(null);
+  const [deleteZoneDialogOpen, setDeleteZoneDialogOpen] = useState(false);
   const [newTrailTitle, setNewTrailTitle] = useState("");
   const [addStopChainId, setAddStopChainId] = useState("");
 
@@ -802,6 +937,15 @@ export default function Sidebar({
       setExpandedRegionSection("trails");
     });
   }, [selectedTrailId]);
+
+  const selectedZone = selectedZoneId
+    ? zones.find((z) => z.id === selectedZoneId) || null
+    : null;
+
+  const zoneNameValue =
+    zoneNameDraft.zoneId === selectedZone?.id
+      ? zoneNameDraft.value
+      : (selectedZone?.name ?? "");
 
   useEffect(() => {
     if (!selectedChainId || selectedTrailId) return;
@@ -1189,6 +1333,30 @@ export default function Sidebar({
       setCreateError(formatSupabaseError(e));
     } finally {
       setFlagBusy(false);
+    }
+  };
+
+  const setChainZone = async (zoneId: string | null) => {
+    if (!selectedChain) return;
+    setFlagBusy(true);
+    try {
+      await onSetChainZone(selectedChain.id, zoneId);
+    } catch (e) {
+      setCreateError(formatSupabaseError(e));
+    } finally {
+      setFlagBusy(false);
+    }
+  };
+
+  const runZoneAction = async (action: () => Promise<void> | void) => {
+    setZoneBusy(true);
+    setZoneError(null);
+    try {
+      await action();
+    } catch (e) {
+      setZoneError(formatSupabaseError(e));
+    } finally {
+      setZoneBusy(false);
     }
   };
 
@@ -1830,6 +1998,17 @@ export default function Sidebar({
                     >
                       Add location
                     </Button>
+                    {regionSpotFeedback.length > 0 ? (
+                      <Box sx={{ pt: 1 }}>
+                        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                          Spots suggested by players ({regionSpotFeedback.length})
+                        </Typography>
+                        <FeedbackList
+                          items={regionSpotFeedback}
+                          onSetStatus={onSetFeedbackStatus}
+                        />
+                      </Box>
+                    ) : null}
                   </Stack>
                 </EditorAccordion>
 
@@ -1950,6 +2129,260 @@ export default function Sidebar({
                     </Button>
                   </Stack>
                 </EditorAccordion>
+
+                <EditorAccordion
+                  section="zones"
+                  expandedSection={expandedRegionSection}
+                  onExpand={setExpandedRegionSection}
+                  title="Explore zones"
+                  subtitle={`${regionZones.length}`}
+                >
+                  <Stack spacing={1}>
+                    <Typography variant="caption" color="text.secondary">
+                      Zones group Explore locations so players get finishable goals
+                      (e.g. &quot;4 of 12 solved in Old Town&quot;). Locations on a
+                      trail show locked in Explore and don&apos;t count.
+                    </Typography>
+                    <List dense sx={{ py: 0 }}>
+                      {regionZones.map((z, index) => {
+                        const members = regionChains.filter((c) => c.zone_id === z.id);
+                        const playable = members.filter(
+                          (c) =>
+                            c.explore_visible !== false &&
+                            c.ready_to_publish &&
+                            !chainIdsOnAnyTrail.has(c.id),
+                        ).length;
+                        const locked = members.filter(
+                          (c) => c.explore_visible !== false && chainIdsOnAnyTrail.has(c.id),
+                        ).length;
+                        const isSelected = selectedZoneId === z.id;
+                        return (
+                          <Box key={z.id}>
+                            <ListItemButton
+                              selected={isSelected}
+                              onClick={() => onSelectZone(isSelected ? null : z.id)}
+                              sx={{
+                                minWidth: 0,
+                                opacity:
+                                  z.ready_to_publish && selectedRegion?.ready_to_publish
+                                    ? 1
+                                    : 0.72,
+                              }}
+                            >
+                              <ListItemText
+                                primary={
+                                  <Typography
+                                    noWrap
+                                    sx={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                                  >
+                                    {z.name}
+                                  </Typography>
+                                }
+                                secondary={`${playable} playable${locked > 0 ? ` · ${locked} locked (on a trail)` : ""}`}
+                                sx={{ minWidth: 0, mr: 1 }}
+                              />
+                              <IconButton
+                                size="small"
+                                aria-label="Move zone up"
+                                disabled={zoneBusy || index === 0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void runZoneAction(() => onMoveZone(z.id, -1));
+                                }}
+                              >
+                                <KeyboardArrowUpIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                aria-label="Move zone down"
+                                disabled={zoneBusy || index === regionZones.length - 1}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void runZoneAction(() => onMoveZone(z.id, 1));
+                                }}
+                              >
+                                <KeyboardArrowDownIcon fontSize="small" />
+                              </IconButton>
+                              <ReadyToPublishControl
+                                ready={z.ready_to_publish}
+                                entityLabel="zone"
+                                onChange={(ready) => onSetZoneReadyToPublish(z.id, ready)}
+                              />
+                            </ListItemButton>
+                            {isSelected ? (
+                              <Paper variant="outlined" sx={{ p: 1.5, my: 1 }}>
+                                <Stack spacing={1.5}>
+                                  <Box sx={{ display: "flex", gap: 1 }}>
+                                    <TextField
+                                      size="small"
+                                      label="Zone name"
+                                      value={zoneNameValue}
+                                      onChange={(e) =>
+                                        setZoneNameDraft({ zoneId: z.id, value: e.target.value })
+                                      }
+                                      fullWidth
+                                    />
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      disabled={
+                                        zoneBusy ||
+                                        !zoneNameValue.trim() ||
+                                        zoneNameValue.trim() === z.name
+                                      }
+                                      onClick={() =>
+                                        void runZoneAction(() =>
+                                          onRenameZone(z.id, zoneNameValue),
+                                        )
+                                      }
+                                    >
+                                      Save
+                                    </Button>
+                                  </Box>
+                                  <ImageUploadBlock
+                                    label="Zone card image"
+                                    imagePath={z.image_path}
+                                    imageCacheKey={
+                                      z.image_path ? `zone-image:${z.id}` : undefined
+                                    }
+                                    getImageUrl={getImageUrl}
+                                    emptyLabel="No zone image yet (players see the region image)."
+                                    uploadLabel="Upload zone image"
+                                    replaceLabel="Replace zone image"
+                                    removeLabel="Remove image"
+                                    fullWidth
+                                    maxHeight={120}
+                                    onPickFile={async (file) => {
+                                      await onSetZoneImage({ zoneId: z.id, file });
+                                    }}
+                                    onRemove={async () => {
+                                      await onRemoveZoneImage({ zoneId: z.id });
+                                    }}
+                                  />
+                                  <Box>
+                                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                                      Locations ({members.length})
+                                    </Typography>
+                                    {members.length === 0 ? (
+                                      <Typography variant="caption" color="text.secondary">
+                                        No locations yet. Open a location and pick this
+                                        zone under Location details.
+                                      </Typography>
+                                    ) : (
+                                      <List dense disablePadding>
+                                        {members.map((c) => (
+                                          <ListItemButton
+                                            key={c.id}
+                                            onClick={() => onSelectChain(c.id)}
+                                            onMouseEnter={() =>
+                                              onHoverChange({ kind: "chain", id: c.id })
+                                            }
+                                            onMouseLeave={() => onHoverChange(null)}
+                                            sx={{ py: 0.25 }}
+                                          >
+                                            <ListItemText
+                                              primary={c.title}
+                                              secondary={
+                                                c.explore_visible === false
+                                                  ? "Hidden from Explore"
+                                                  : chainIdsOnAnyTrail.has(c.id)
+                                                    ? "Locked in Explore (on a trail)"
+                                                    : c.ready_to_publish
+                                                      ? "Playable in Explore"
+                                                      : "Draft"
+                                              }
+                                            />
+                                          </ListItemButton>
+                                        ))}
+                                      </List>
+                                    )}
+                                  </Box>
+                                  <Button
+                                    size="small"
+                                    color="error"
+                                    variant="outlined"
+                                    disabled={zoneBusy}
+                                    onClick={() => setDeleteZoneDialogOpen(true)}
+                                  >
+                                    Delete zone
+                                  </Button>
+                                  {zoneError ? (
+                                    <Alert severity="error">{zoneError}</Alert>
+                                  ) : null}
+                                </Stack>
+                              </Paper>
+                            ) : null}
+                          </Box>
+                        );
+                      })}
+                    </List>
+                    {regionZones.length === 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        No zones yet. Without zones, Explore shows one flat map of
+                        pins.
+                      </Typography>
+                    )}
+                    <Box sx={{ display: "flex", gap: 1 }}>
+                      <TextField
+                        size="small"
+                        label="New zone name"
+                        value={newZoneName}
+                        onChange={(e) => setNewZoneName(e.target.value)}
+                        fullWidth
+                      />
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={zoneBusy || !newZoneName.trim() || !selectedRegionId}
+                        onClick={() => {
+                          if (!selectedRegionId) return;
+                          void runZoneAction(async () => {
+                            await onCreateZone({
+                              name: newZoneName,
+                              regionId: selectedRegionId,
+                            });
+                            setNewZoneName("");
+                          });
+                        }}
+                      >
+                        Add zone
+                      </Button>
+                    </Box>
+                    {zoneError && !selectedZone ? (
+                      <Alert severity="error">{zoneError}</Alert>
+                    ) : null}
+                  </Stack>
+                </EditorAccordion>
+
+                <Dialog
+                  open={deleteZoneDialogOpen && !!selectedZone}
+                  onClose={() => setDeleteZoneDialogOpen(false)}
+                >
+                  <DialogTitle>Delete zone?</DialogTitle>
+                  <DialogContent>
+                    <Typography variant="body2">
+                      &quot;{selectedZone?.name}&quot; will be removed. Its locations
+                      stay in the region but will no longer belong to a zone.
+                    </Typography>
+                  </DialogContent>
+                  <DialogActions>
+                    <Button onClick={() => setDeleteZoneDialogOpen(false)}>Cancel</Button>
+                    <Button
+                      color="error"
+                      disabled={zoneBusy}
+                      onClick={() => {
+                        if (!selectedZone) return;
+                        const id = selectedZone.id;
+                        void runZoneAction(async () => {
+                          await onDeleteZone(id);
+                          setDeleteZoneDialogOpen(false);
+                        });
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </DialogActions>
+                </Dialog>
               </>
             )}
           </Box>
@@ -2242,6 +2675,40 @@ export default function Sidebar({
                 )}
               </Stack>
             </EditorAccordion>
+
+            <EditorAccordion
+              section="players"
+              expandedSection={expandedTrailSection}
+              onExpand={setExpandedTrailSection}
+              title="Players"
+              subtitle={
+                trailFunnel
+                  ? `${trailFunnel.started} started · ${trailFunnel.completed} finished`
+                  : "…"
+              }
+            >
+              <TrailFunnelView funnel={trailFunnel} />
+            </EditorAccordion>
+
+            <EditorAccordion
+              section="feedback"
+              expandedSection={expandedTrailSection}
+              onExpand={setExpandedTrailSection}
+              title="Player feedback"
+              subtitle={feedbackSubtitle(trailFeedback)}
+            >
+              <Stack spacing={1}>
+                <Typography variant="caption" color="text.secondary">
+                  End-of-trail ratings. Feedback on a location or step shows on that
+                  location.
+                </Typography>
+                <FeedbackList
+                  items={trailFeedback}
+                  onSetStatus={onSetFeedbackStatus}
+                  emptyText="No open trail feedback."
+                />
+              </Stack>
+            </EditorAccordion>
           </Box>
           <Box sx={{ p: 1, borderTop: 1, borderColor: "divider" }}>
             <Button
@@ -2356,6 +2823,32 @@ export default function Sidebar({
                         {PLACE_TYPES.map((t) => (
                           <MenuItem key={t} value={t}>
                             {PLACE_TYPE_LABELS[t]}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl size="small" sx={{ minWidth: 140 }} disabled={flagBusy}>
+                      <InputLabel id="zone-label">Explore zone</InputLabel>
+                      <Select
+                        labelId="zone-label"
+                        label="Explore zone"
+                        value={
+                          selectedChain.zone_id &&
+                          regionZones.some((z) => z.id === selectedChain.zone_id)
+                            ? selectedChain.zone_id
+                            : ""
+                        }
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          void setChainZone(next === "" ? null : next);
+                        }}
+                      >
+                        <MenuItem value="">
+                          <em>None</em>
+                        </MenuItem>
+                        {regionZones.map((z) => (
+                          <MenuItem key={z.id} value={z.id}>
+                            {z.name}
                           </MenuItem>
                         ))}
                       </Select>
@@ -2502,6 +2995,21 @@ export default function Sidebar({
                   </Button>
                 </Box>
               </Stack>
+            </EditorAccordion>
+
+            <EditorAccordion
+              section="feedback"
+              expandedSection={expandedChainSection}
+              onExpand={setExpandedChainSection}
+              title="Player feedback"
+              subtitle={feedbackSubtitle(chainFeedback)}
+            >
+              <FeedbackList
+                items={chainFeedback}
+                showWhere
+                onSetStatus={onSetFeedbackStatus}
+                emptyText="No open feedback for this location."
+              />
             </EditorAccordion>
           </Box>
 

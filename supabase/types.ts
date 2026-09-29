@@ -72,6 +72,154 @@ export type Database = {
           },
         ]
       }
+      play_events: {
+        Row: {
+          chain_id: string | null
+          created_at: string
+          event: string
+          id: string
+          meta: Json | null
+          region_id: string
+          step_id: string | null
+          trail_id: string | null
+          user_id: string
+        }
+        Insert: {
+          chain_id?: string | null
+          created_at?: string
+          event: string
+          id?: string
+          meta?: Json | null
+          region_id: string
+          step_id?: string | null
+          trail_id?: string | null
+          user_id?: string
+        }
+        Update: {
+          chain_id?: string | null
+          created_at?: string
+          event?: string
+          id?: string
+          meta?: Json | null
+          region_id?: string
+          step_id?: string | null
+          trail_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "play_events_chain_id_fkey"
+            columns: ["chain_id"]
+            isOneToOne: false
+            referencedRelation: "puzzle_chains"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "play_events_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "play_events_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "puzzle_steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "play_events_trail_id_fkey"
+            columns: ["trail_id"]
+            isOneToOne: false
+            referencedRelation: "trails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      player_feedback: {
+        Row: {
+          answers: Json | null
+          app_version: string | null
+          chain_id: string | null
+          created_at: string
+          id: string
+          kind: string
+          latitude: number | null
+          longitude: number | null
+          message: string | null
+          rating: number | null
+          region_id: string
+          status: string
+          step_id: string | null
+          trail_id: string | null
+          user_id: string
+        }
+        Insert: {
+          answers?: Json | null
+          app_version?: string | null
+          chain_id?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          latitude?: number | null
+          longitude?: number | null
+          message?: string | null
+          rating?: number | null
+          region_id: string
+          status?: string
+          step_id?: string | null
+          trail_id?: string | null
+          user_id?: string
+        }
+        Update: {
+          answers?: Json | null
+          app_version?: string | null
+          chain_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          latitude?: number | null
+          longitude?: number | null
+          message?: string | null
+          rating?: number | null
+          region_id?: string
+          status?: string
+          step_id?: string | null
+          trail_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_feedback_chain_id_fkey"
+            columns: ["chain_id"]
+            isOneToOne: false
+            referencedRelation: "puzzle_chains"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_feedback_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_feedback_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "puzzle_steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_feedback_trail_id_fkey"
+            columns: ["trail_id"]
+            isOneToOne: false
+            referencedRelation: "trails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -107,6 +255,7 @@ export type Database = {
           region_id: string | null
           steps_unordered: boolean
           title: string
+          zone_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -121,6 +270,7 @@ export type Database = {
           region_id?: string | null
           steps_unordered?: boolean
           title: string
+          zone_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -135,6 +285,7 @@ export type Database = {
           region_id?: string | null
           steps_unordered?: boolean
           title?: string
+          zone_id?: string | null
         }
         Relationships: [
           {
@@ -142,6 +293,13 @@ export type Database = {
             columns: ["region_id"]
             isOneToOne: false
             referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "puzzle_chains_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
             referencedColumns: ["id"]
           },
         ]
@@ -423,6 +581,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "treasures_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zones: {
+        Row: {
+          created_at: string
+          id: string
+          image_path: string | null
+          name: string
+          order_index: number
+          ready_to_publish: boolean
+          region_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_path?: string | null
+          name: string
+          order_index?: number
+          ready_to_publish?: boolean
+          region_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_path?: string | null
+          name?: string
+          order_index?: number
+          ready_to_publish?: boolean
+          region_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zones_region_id_fkey"
             columns: ["region_id"]
             isOneToOne: false
             referencedRelation: "regions"

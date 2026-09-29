@@ -35,6 +35,8 @@ type Props = {
   selectedRegionId: string | null;
   selectedChainId: string | null;
   selectedTrailId: string | null;
+  /** Location ids in the selected Explore zone; other locations are dimmed. Null when no zone is selected. */
+  zoneChainIds?: Set<string> | null;
   /** True once the steps fetch for the selected chain has completed. */
   chainStepsReady: boolean;
   selectedStepId: string | null;
@@ -241,6 +243,7 @@ export default function MapView(props: Props) {
     selectedRegionId,
     selectedChainId,
     selectedTrailId,
+    zoneChainIds = null,
     chainStepsReady,
     onHoverChange,
     placement,
@@ -632,7 +635,9 @@ export default function MapView(props: Props) {
               if (isSelected && visibleStepsWithCoords.length > 0) return null;
               if (selectedTrailId && trailStopChainIds.has(c.id)) return null;
               const dimmed =
-                (!!selectedChainId && !isSelected) || !!selectedTrailId;
+                (!!selectedChainId && !isSelected) ||
+                !!selectedTrailId ||
+                (!selectedChainId && !!zoneChainIds && !zoneChainIds.has(c.id));
               return (
                 <Marker
                   key={c.id}

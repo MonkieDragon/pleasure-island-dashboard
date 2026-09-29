@@ -16,7 +16,10 @@ import {
   type SymbolCodexConfig,
 
   type JigsawConfig,
+  type FeedbackItem,
+  type FeedbackStatus,
 } from "@/types/database";
+import FeedbackList from "@/components/FeedbackList";
 import { isAnswerToken, sanitizeAnswerToken } from "@/lib/answerToken";
 import {
   Box,
@@ -55,7 +58,7 @@ type Draft = {
   interactiveConfig: InteractiveConfig;
 };
 
-type EditorSection = "content" | "playerImage" | "hints" | "notes" | "location";
+type EditorSection = "content" | "playerImage" | "hints" | "notes" | "location" | "feedback";
 
 type Props = {
   step: PuzzleStep | null;
@@ -91,6 +94,9 @@ type Props = {
   getImageUrl: (path: string, cacheKey?: string) => string;
   /** Larger inputs + scroll focused field into view (mobile editor panel). */
   compactMobile?: boolean;
+  /** Unresolved player feedback for this step. */
+  stepFeedback: FeedbackItem[];
+  onSetFeedbackStatus: (id: string, status: FeedbackStatus) => void;
 };
 
 function parseOptionalNumber(input: string): number | null {
@@ -810,6 +816,8 @@ export default function SingleStepEditor({
   onUpdateSymbolColor,
   getImageUrl,
   compactMobile = false,
+  stepFeedback,
+  onSetFeedbackStatus,
 }: Props) {
   const [draftByStepId, setDraftByStepId] = useState<Record<string, Draft>>({});
   const [answerError, setAnswerError] = useState<string | null>(null);
@@ -1167,6 +1175,13 @@ export default function SingleStepEditor({
   const notesSubtitle = draft.notes.trim() ? "Has notes" : "Empty";
   const locationSubtitle =
     step.latitude != null && step.longitude != null ? "Set" : "None";
+  const newStepFeedback = stepFeedback.filter((f) => f.status === "new").length;
+  const feedbackSubtitle =
+    stepFeedback.length === 0
+      ? "None"
+      : newStepFeedback > 0
+        ? `${stepFeedback.length} open · ${newStepFeedback} new`
+        : `${stepFeedback.length} open`;
 
   return (
     <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
@@ -1608,6 +1623,20 @@ export default function SingleStepEditor({
               Optional. Steps can omit coordinates; when set, the marker appears on the map trail.
             </Typography>
           </Stack>
+        </EditorAccordion>
+
+        <EditorAccordion
+          section="feedback"
+          expandedSection={expandedSection}
+          onExpand={setExpandedSection}
+          title="Player feedback"
+          subtitle={feedbackSubtitle}
+        >
+          <FeedbackList
+            items={stepFeedback}
+            onSetStatus={onSetFeedbackStatus}
+            emptyText="No open feedback for this step."
+          />
         </EditorAccordion>
 
         {!!mapError && (

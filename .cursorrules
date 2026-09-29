@@ -17,6 +17,7 @@ Do NOT rename core domain entities:
 - step
 - trail (ordered playlist of locations; player-facing)
 - treasure (optional system only)
+- zone (Explore-only geographic group of locations within a region)
 
 ---
 
@@ -27,6 +28,7 @@ Do NOT rename core domain entities:
 - region = geographic grouping of locations
 - trail = ordered playlist of locations; what players browse and play
 - treasure = optional reward system (not core gameplay)
+- zone = named geographic group of locations within a region, used only for player Explore progress
 
 Never merge or reinterpret these concepts. A location may appear on multiple trails (shared spine) but at most once per trail.
 

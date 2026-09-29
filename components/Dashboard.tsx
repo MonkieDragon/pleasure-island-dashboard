@@ -30,6 +30,11 @@ import {
   TrailImage,
   TrailStop,
   Treasure,
+  Zone,
+  type FeedbackItem,
+  type FeedbackStatus,
+  type PlayEvent,
+  type TrailFunnel,
   isSymbolColor,
   parseStepHint,
   serializeStepHint,
@@ -45,6 +50,7 @@ import Sidebar from "./Sidebar";
 import SingleStepEditor from "./SingleStepEditor";
 import SingleTreasureEditor from "./SingleTreasureEditor";
 import AdminAccessPanel from "./AdminAccessPanel";
+import FeedbackInboxPanel, { type FeedbackFilter } from "./FeedbackInboxPanel";
 import dynamic from "next/dynamic";
 
 type NewChainDraft = {
@@ -68,6 +74,7 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import {
   AppBar,
+  Badge,
   Box,
   Button,
   CircularProgress,
@@ -110,6 +117,14 @@ export default function Dashboard() {
     { user_id: string; region_id: string }[]
   >([]);
   const [adminDialogOpen, setAdminDialogOpen] = useState(false);
+
+  const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
+  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
+  const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>({
+    status: "open",
+    regionId: "",
+    kind: "",
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -195,6 +210,7 @@ export default function Dashboard() {
   const [trails, setTrails] = useState<Trail[]>([]);
   const [trailStops, setTrailStops] = useState<TrailStop[]>([]);
   const [trailImages, setTrailImages] = useState<TrailImage[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
 
   const [selectedCountryId, setSelectedCountryId] = useState<string | null>(
     null,
@@ -208,6 +224,8 @@ export default function Dashboard() {
   const [selectedTrailId, setSelectedTrailId] = useState<string | null>(null);
   /** Trail to restore when backing out of a location opened from that trail. */
   const [trailReturnId, setTrailReturnId] = useState<string | null>(null);
+  /** Explore zone expanded in the region's Zones section (dims other locations on the map). */
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
 
   const accessibleRegions = useMemo(() => {
     if (!accessOk) return [];
@@ -244,6 +262,25 @@ export default function Dashboard() {
     if (isAdmin || editorRegionIds === null) return trails;
     return trails.filter((t) => editorRegionIds.has(t.region_id));
   }, [accessOk, isAdmin, editorRegionIds, trails]);
+
+  const visibleZones = useMemo(() => {
+    if (!accessOk) return [];
+    if (isAdmin || editorRegionIds === null) return zones;
+    return zones.filter((z) => editorRegionIds.has(z.region_id));
+  }, [accessOk, isAdmin, editorRegionIds, zones]);
+
+  const activeZoneId =
+    selectedZoneId &&
+    zones.some((z) => z.id === selectedZoneId && z.region_id === selectedRegionId)
+      ? selectedZoneId
+      : null;
+
+  const selectedZoneChainIds = useMemo(() => {
+    if (!activeZoneId) return null;
+    return new Set(
+      chains.filter((c) => c.zone_id === activeZoneId).map((c) => c.id),
+    );
+  }, [chains, activeZoneId]);
 
   const reloadAdminData = useCallback(async () => {
     const [pr, gr] = await Promise.all([
@@ -306,6 +343,13 @@ export default function Dashboard() {
     | { type: "selectRegion"; regionId: string }
     | { type: "selectChain"; chainId: string }
     | { type: "selectTrail"; trailId: string }
+    | {
+        type: "openFeedbackTarget";
+        regionId: string;
+        trailId: string | null;
+        chainId: string | null;
+        stepId: string | null;
+      }
   >(null);
 
   const [mapHover, setMapHover] = useState<MapHover | null>(null);
@@ -416,6 +460,77 @@ export default function Dashboard() {
       .select("*")
       .then(({ data }) => setTrails((data || []) as Trail[]));
   }, [accessOk]);
+
+  // ----------------------------
+  // LOAD ZONES (once)
+  // ----------------------------
+  useEffect(() => {
+    if (!accessOk) return;
+    supabase
+      .from("zones")
+      .select("*")
+      .then(({ data }) => setZones((data || []) as Zone[]));
+  }, [accessOk]);
+
+  // ----------------------------
+  // LOAD PLAYER FEEDBACK (on load + when the inbox opens; RLS scopes to editable regions)
+  // ----------------------------
+  const reloadFeedback = useCallback(() => {
+    supabase
+      .from("player_feedback")
+      .select(
+        "*, regions(name), trails(title), puzzle_chains(title), puzzle_steps(order_index)",
+      )
+      .order("created_at", { ascending: false })
+      .limit(500)
+      .then(({ data, error }) => {
+        if (!error) setFeedback((data || []) as FeedbackItem[]);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!accessOk) return;
+    reloadFeedback();
+  }, [accessOk, reloadFeedback]);
+
+  useEffect(() => {
+    if (!accessOk || !feedbackDialogOpen) return;
+    reloadFeedback();
+  }, [accessOk, feedbackDialogOpen, reloadFeedback]);
+
+  // ----------------------------
+  // LOAD PLAY EVENTS FOR SELECTED TRAIL (funnel)
+  // ----------------------------
+  const [trailEvents, setTrailEvents] = useState<{
+    trailId: string;
+    events: Pick<PlayEvent, "user_id" | "event" | "chain_id" | "meta">[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!accessOk || !selectedTrailId) return;
+    let cancelled = false;
+    const trailId = selectedTrailId;
+    void (async () => {
+      const { data, error } = await supabase
+        .from("play_events")
+        .select("user_id, event, chain_id, meta")
+        .eq("trail_id", trailId)
+        .in("event", [
+          "trail_started",
+          "step_viewed",
+          "answer_wrong",
+          "hint_used",
+          "location_completed",
+          "trail_completed",
+        ])
+        .limit(20000);
+      if (cancelled) return;
+      setTrailEvents({ trailId, events: error ? [] : data || [] });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessOk, selectedTrailId]);
 
   // ----------------------------
   // LOAD TRAIL IMAGES (once)
@@ -1271,6 +1386,25 @@ export default function Dashboard() {
       setTrailReturnId(null);
       setSelectedTrailId(nav.trailId);
     }
+    if (nav.type === "openFeedbackTarget") {
+      const region = regions.find((r) => r.id === nav.regionId);
+      setPlacement(null);
+      if (region) setSelectedCountryId(normalizeCountryId(region.country));
+      setSelectedRegionId(nav.regionId);
+      setSelectedTreasureId(null);
+      setTrailReturnId(null);
+      if (nav.chainId) {
+        setSelectedTrailId(null);
+        setSelectedChainId(nav.chainId);
+        setSelectedStepId(nav.stepId);
+        if (nav.stepId && isMobile) setMobileLowerTab(1);
+      } else {
+        setSelectedChainId(null);
+        setSelectedStepId(null);
+        setSteps([]);
+        setSelectedTrailId(nav.trailId);
+      }
+    }
   };
 
   const maybeNavigate = (nav: NonNullable<typeof pendingNav>) => {
@@ -1506,6 +1640,142 @@ export default function Dashboard() {
     setChains((prev) =>
       prev.map((c) => (c.id === chainId ? { ...c, place_type: placeType } : c)),
     );
+  };
+
+  const setChainZone = async (chainId: string, zoneId: string | null) => {
+    const { error } = await supabase
+      .from("puzzle_chains")
+      .update({ zone_id: zoneId })
+      .eq("id", chainId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setChains((prev) =>
+      prev.map((c) => (c.id === chainId ? { ...c, zone_id: zoneId } : c)),
+    );
+  };
+
+  const createZone = async (input: { name: string; regionId: string }) => {
+    const name = input.name.trim();
+    if (!name) throw new Error("Name is required.");
+    const nextOrder =
+      zones
+        .filter((z) => z.region_id === input.regionId)
+        .reduce((max, z) => Math.max(max, z.order_index), -1) + 1;
+    const { data, error } = await supabase
+      .from("zones")
+      .insert({
+        name,
+        region_id: input.regionId,
+        order_index: nextOrder,
+        ready_to_publish: false,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(formatSupabaseError(error));
+    const zone = data as Zone;
+    setZones((prev) => [...prev, zone]);
+    setSelectedZoneId(zone.id);
+  };
+
+  const renameZone = async (zoneId: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("Name is required.");
+    const { error } = await supabase
+      .from("zones")
+      .update({ name: trimmed })
+      .eq("id", zoneId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setZones((prev) =>
+      prev.map((z) => (z.id === zoneId ? { ...z, name: trimmed } : z)),
+    );
+  };
+
+  const setZoneReadyToPublish = async (zoneId: string, ready: boolean) => {
+    const { error } = await supabase
+      .from("zones")
+      .update({ ready_to_publish: ready })
+      .eq("id", zoneId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setZones((prev) =>
+      prev.map((z) => (z.id === zoneId ? { ...z, ready_to_publish: ready } : z)),
+    );
+  };
+
+  const setZoneImage = async (input: { zoneId: string; file: File }) => {
+    const zone = zones.find((z) => z.id === input.zoneId) || null;
+    if (!zone) return;
+    const ext = fileExtensionFromName(input.file.name, "jpg");
+    const objectPath = await uploadStorageImage(supabase, {
+      file: input.file,
+      objectPath: `zones/${zone.id}.${ext}`,
+      previousPath: zone.image_path,
+    });
+    const { error } = await supabase
+      .from("zones")
+      .update({ image_path: objectPath })
+      .eq("id", zone.id);
+    if (error) throw new Error(formatSupabaseError(error));
+    setZones((prev) =>
+      prev.map((z) => (z.id === zone.id ? { ...z, image_path: objectPath } : z)),
+    );
+    bumpImageCache(`zone-image:${zone.id}`);
+  };
+
+  const removeZoneImage = async (input: { zoneId: string }) => {
+    const zone = zones.find((z) => z.id === input.zoneId) || null;
+    if (!zone) return;
+    if (zone.image_path) {
+      await removeStorageImage(supabase, zone.image_path);
+    }
+    await supabase.from("zones").update({ image_path: null }).eq("id", zone.id);
+    setZones((prev) =>
+      prev.map((z) => (z.id === zone.id ? { ...z, image_path: null } : z)),
+    );
+    bumpImageCache(`zone-image:${zone.id}`);
+  };
+
+  const moveZone = async (zoneId: string, direction: -1 | 1) => {
+    const zone = zones.find((z) => z.id === zoneId) || null;
+    if (!zone) return;
+    const ordered = zones
+      .filter((z) => z.region_id === zone.region_id)
+      .slice()
+      .sort((a, b) => a.order_index - b.order_index);
+    const from = ordered.findIndex((z) => z.id === zoneId);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= ordered.length) return;
+    const reordered = ordered.slice();
+    [reordered[from], reordered[to]] = [reordered[to], reordered[from]];
+    const changed = reordered
+      .map((z, index) => ({ id: z.id, order_index: index }))
+      .filter((row) => ordered.find((z) => z.id === row.id)?.order_index !== row.order_index);
+    for (const row of changed) {
+      const { error } = await supabase
+        .from("zones")
+        .update({ order_index: row.order_index })
+        .eq("id", row.id);
+      if (error) throw new Error(formatSupabaseError(error));
+    }
+    const nextOrder = new Map(changed.map((row) => [row.id, row.order_index]));
+    setZones((prev) =>
+      prev.map((z) =>
+        nextOrder.has(z.id) ? { ...z, order_index: nextOrder.get(z.id)! } : z,
+      ),
+    );
+  };
+
+  const deleteZone = async (zoneId: string) => {
+    const zone = zones.find((z) => z.id === zoneId) || null;
+    if (!zone) return;
+    if (zone.image_path) {
+      await removeStorageImage(supabase, zone.image_path);
+    }
+    const { error } = await supabase.from("zones").delete().eq("id", zoneId);
+    if (error) throw new Error(formatSupabaseError(error));
+    setZones((prev) => prev.filter((z) => z.id !== zoneId));
+    setChains((prev) =>
+      prev.map((c) => (c.zone_id === zoneId ? { ...c, zone_id: null } : c)),
+    );
+    setSelectedZoneId((prev) => (prev === zoneId ? null : prev));
   };
 
   const updateTrailMetadata = async (
@@ -2112,6 +2382,147 @@ export default function Dashboard() {
     [isMobile],
   );
 
+  const setFeedbackStatus = useCallback(
+    async (id: string, status: FeedbackStatus) => {
+      setFeedback((prev) => prev.map((f) => (f.id === id ? { ...f, status } : f)));
+      const { error } = await supabase
+        .from("player_feedback")
+        .update({ status })
+        .eq("id", id);
+      if (error) reloadFeedback();
+    },
+    [reloadFeedback],
+  );
+
+  const markAllFeedbackSeen = useCallback(async () => {
+    const ids = feedback.filter((f) => f.status === "new").map((f) => f.id);
+    if (ids.length === 0) return;
+    setFeedback((prev) =>
+      prev.map((f) => (f.status === "new" ? { ...f, status: "seen" } : f)),
+    );
+    const { error } = await supabase
+      .from("player_feedback")
+      .update({ status: "seen" })
+      .in("id", ids);
+    if (error) reloadFeedback();
+  }, [feedback, reloadFeedback]);
+
+  const openFeedbackTarget = (item: FeedbackItem) => {
+    setFeedbackDialogOpen(false);
+    if (item.status === "new") void setFeedbackStatus(item.id, "seen");
+    maybeNavigate({
+      type: "openFeedbackTarget",
+      regionId: item.region_id,
+      trailId: item.trail_id,
+      chainId: item.chain_id,
+      stepId: item.step_id,
+    });
+  };
+
+  const newFeedbackCount = useMemo(
+    () => feedback.filter((f) => f.status === "new").length,
+    [feedback],
+  );
+
+  const inboxFeedback = useMemo(
+    () =>
+      feedback.filter((f) => {
+        if (feedbackFilter.status === "new" && f.status !== "new") return false;
+        if (feedbackFilter.status === "open" && f.status === "resolved") return false;
+        if (feedbackFilter.regionId && f.region_id !== feedbackFilter.regionId) return false;
+        if (feedbackFilter.kind && f.kind !== feedbackFilter.kind) return false;
+        return true;
+      }),
+    [feedback, feedbackFilter],
+  );
+
+  const feedbackRegionOptions = useMemo(() => {
+    const ids = new Set(feedback.map((f) => f.region_id));
+    return regions
+      .filter((r) => ids.has(r.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [feedback, regions]);
+
+  const openFeedback = useMemo(
+    () => feedback.filter((f) => f.status !== "resolved"),
+    [feedback],
+  );
+  const stepFeedback = useMemo(
+    () => (selectedStepId ? openFeedback.filter((f) => f.step_id === selectedStepId) : []),
+    [openFeedback, selectedStepId],
+  );
+  const chainFeedback = useMemo(
+    () =>
+      selectedChainId ? openFeedback.filter((f) => f.chain_id === selectedChainId) : [],
+    [openFeedback, selectedChainId],
+  );
+  const trailFeedback = useMemo(
+    () =>
+      selectedTrailId
+        ? openFeedback.filter((f) => f.trail_id === selectedTrailId && !f.chain_id)
+        : [],
+    [openFeedback, selectedTrailId],
+  );
+  const regionSpotFeedback = useMemo(
+    () =>
+      selectedRegionId
+        ? openFeedback.filter(
+            (f) => f.region_id === selectedRegionId && f.kind === "new_location",
+          )
+        : [],
+    [openFeedback, selectedRegionId],
+  );
+
+  const trailFunnel = useMemo<TrailFunnel | null>(() => {
+    if (!selectedTrailId || trailEvents?.trailId !== selectedTrailId) return null;
+    const usersBy = (event: string, chainId?: string) =>
+      new Set(
+        trailEvents.events
+          .filter(
+            (e) =>
+              e.event === event &&
+              (chainId === undefined || e.chain_id === chainId),
+          )
+          .map((e) => e.user_id),
+      );
+    const countBy = (event: string, chainId: string) =>
+      trailEvents.events.filter((e) => e.event === event && e.chain_id === chainId)
+        .length;
+    const isSkipped = (meta: PlayEvent["meta"]) =>
+      !!meta &&
+      typeof meta === "object" &&
+      !Array.isArray(meta) &&
+      (meta as Record<string, unknown>).skipped === true;
+    const stops = trailStops
+      .filter((s) => s.trail_id === selectedTrailId)
+      .slice()
+      .sort((a, b) => a.order_index - b.order_index)
+      .map((s) => {
+        const completedEvents = trailEvents.events.filter(
+          (e) => e.event === "location_completed" && e.chain_id === s.chain_id,
+        );
+        return {
+          chainId: s.chain_id,
+          title: chains.find((c) => c.id === s.chain_id)?.title ?? "Location",
+          optional: s.optional,
+          reached: usersBy("step_viewed", s.chain_id).size,
+          completed: new Set(
+            completedEvents.filter((e) => !isSkipped(e.meta)).map((e) => e.user_id),
+          ).size,
+          skipped: new Set(
+            completedEvents.filter((e) => isSkipped(e.meta)).map((e) => e.user_id),
+          ).size,
+          wrongAnswers: countBy("answer_wrong", s.chain_id),
+          hintsUsed: countBy("hint_used", s.chain_id),
+        };
+      });
+    return {
+      started: usersBy("trail_started").size,
+      completed: usersBy("trail_completed").size,
+      stops,
+    };
+  }, [selectedTrailId, trailEvents, trailStops, chains]);
+
   const mapInvalidateSizeKey = mobileLowerTab * 50_000 + Math.floor(keyboardInsetPx);
 
   const handleAdminSaveRole = async (
@@ -2172,6 +2583,33 @@ export default function Dashboard() {
       </Dialog>
     ) : null;
 
+  const feedbackDialog = (
+    <Dialog
+      open={feedbackDialogOpen}
+      onClose={() => setFeedbackDialogOpen(false)}
+      fullWidth
+      maxWidth="md"
+      fullScreen={isMobile}
+    >
+      <DialogTitle sx={{ fontWeight: 700 }}>Player feedback</DialogTitle>
+      <DialogContent dividers sx={{ px: { xs: 1, sm: 2 }, py: 2 }}>
+        <FeedbackInboxPanel
+          feedback={inboxFeedback}
+          filter={feedbackFilter}
+          regionOptions={feedbackRegionOptions}
+          newCount={newFeedbackCount}
+          onFilterChange={setFeedbackFilter}
+          onSetStatus={(id, status) => void setFeedbackStatus(id, status)}
+          onMarkAllSeen={() => void markAllFeedbackSeen()}
+          onOpenTarget={openFeedbackTarget}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setFeedbackDialogOpen(false)}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+
   const renderSidebar = (fullWidth: boolean) => (
     <Sidebar
       countries={sidebarCountries}
@@ -2183,6 +2621,17 @@ export default function Dashboard() {
       trails={visibleTrails}
       trailStops={trailStops}
       trailImages={trailImages}
+      zones={visibleZones}
+      selectedZoneId={activeZoneId}
+      onSelectZone={setSelectedZoneId}
+      onCreateZone={createZone}
+      onRenameZone={renameZone}
+      onSetZoneReadyToPublish={setZoneReadyToPublish}
+      onSetZoneImage={setZoneImage}
+      onRemoveZoneImage={removeZoneImage}
+      onMoveZone={moveZone}
+      onDeleteZone={deleteZone}
+      onSetChainZone={setChainZone}
       selectedRegionId={selectedRegionId}
       selectedChainId={selectedChainId}
       selectedStepId={selectedStepId}
@@ -2272,6 +2721,11 @@ export default function Dashboard() {
       onSetTrailStopOptional={setTrailStopOptional}
       onRemoveTrailStop={removeTrailStop}
       onReorderTrailStops={reorderTrailStops}
+      chainFeedback={chainFeedback}
+      trailFeedback={trailFeedback}
+      regionSpotFeedback={regionSpotFeedback}
+      onSetFeedbackStatus={(id, status) => void setFeedbackStatus(id, status)}
+      trailFunnel={trailFunnel}
       fullWidth={fullWidth}
     />
   );
@@ -2291,6 +2745,7 @@ export default function Dashboard() {
       selectedRegionId={selectedRegionId}
       selectedChainId={selectedChainId}
       selectedTrailId={selectedTrailId}
+      zoneChainIds={selectedZoneChainIds}
       chainStepsReady={!!selectedChainId && stepsLoadedForChainId === selectedChainId}
       selectedStepId={selectedStepId}
       selectedTreasureId={selectedTreasureId}
@@ -2373,6 +2828,8 @@ export default function Dashboard() {
         onUpdateSymbolColor={updateSymbolColor}
         getImageUrl={getImageUrl}
         compactMobile={compactMobile}
+        stepFeedback={stepFeedback}
+        onSetFeedbackStatus={(id, status) => void setFeedbackStatus(id, status)}
       />
     );
 
@@ -2492,6 +2949,20 @@ export default function Dashboard() {
             >
               Puzzle Dashboard
             </Typography>
+            <Badge
+              color="error"
+              badgeContent={newFeedbackCount}
+              max={99}
+              overlap="rectangular"
+            >
+              <Button
+                size="small"
+                variant={feedbackDialogOpen ? "contained" : "outlined"}
+                onClick={() => setFeedbackDialogOpen(true)}
+              >
+                Feedback
+              </Button>
+            </Badge>
             {isAdmin ? (
               <Button
                 size="small"
@@ -2663,6 +3134,7 @@ export default function Dashboard() {
       </Box>
       {navDialog}
       {adminDialog}
+      {feedbackDialog}
     </>
   );
 }

@@ -122,14 +122,17 @@ For generating region / trail / location / step content, follow `.agents/skills/
 - **step** — ordered gameplay clue inside a location
 - **trail** (`trails` + `trail_stops`) — ordered playlist of locations; a curated **puzzle adventure**. This is what players browse and play.
 - **treasure** — optional reward system (not core gameplay)
+- **zone** (`zones`, `puzzle_chains.zone_id`) — named geographic group of locations within a region (e.g. Old Town, Nimman). Used only by player **Explore** as finishable progress buckets. Not a trail, not a region.
 
 Rules:
 
 - A location may appear on **multiple trails** (shared spine across related adventures). A location may appear at most once per trail.
 - `trail_stops.optional` marks skippable stops inside a trail (distinct from `puzzle_chains.optional`, which is Explore “side find”).
 - `puzzle_chains.steps_unordered` (default false): when true, players answer the location’s questions in any order from a list. Leading info steps still play first; info steps after a question belong to that question and show once it is answered.
-- `puzzle_chains.explore_visible` controls Explore: when true, a published location appears on the Explore map (including locations that are also on trails). When false, the location is **trail-only** (narrative glue / exclusive mystery beats).
-- Progress / purchase keys use **trail id**.
+- `puzzle_chains.explore_visible` controls Explore: when true, a published location appears on the Explore map. When false, the location is **trail-only** (narrative glue / exclusive mystery beats).
+- Explore and trails are separate modes with separate progress. A location on a published trail appears in Explore as a **locked teaser** (“Part of a trail — view trail”): it cannot be played in Explore and does not count toward zone progress. Only Explore-visible locations not on any published trail are playable in Explore.
+- Zones: each location belongs to at most one zone (same region). Zones have their own `ready_to_publish`; a region with no published zones shows Explore as one flat map.
+- Trail progress / purchase keys use **trail id**. Explore progress is keyed by **location (chain) id** and stored separately on the player device.
 - `ready_to_publish` exists on trails, locations (`puzzle_chains`), and steps. The player catalog is published trails only; unpublished locations stay dashboard-side.
 - Trail metadata (description, duration, distance, transport, free/paid, cover image) lives on **trails**, not on locations. Frame trails as adventures (puzzle play), not day-trip itineraries.
 - Never merge trail into chain or replace chain/step with “puzzle”.
@@ -156,12 +159,14 @@ The ONLY place allowed to:
 - treasures[]
 - trails[]
 - trailStops[]
+- zones[]
 
 - selectedRegionId
 - selectedChainId
 - selectedStepId
 - selectedTreasureId
 - selectedTrailId
+- selectedZoneId
 
 ### FORBIDDEN:
 
@@ -178,6 +183,7 @@ Region view sections:
 - Locations (add location)
 - Treasures (add treasure)
 - Trails (add trail)
+- Explore zones (add zone; rename, cover image, reorder, publish; locations pick their zone under Location details)
 
 When a trail is selected: edit trail details + reorder stops (locations); mark stops optional.
 
